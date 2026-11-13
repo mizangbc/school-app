@@ -3,6 +3,7 @@ import htm from "https://esm.sh/htm@3.1.1";
 import { auth } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { Structure } from "./structure.js";
+import { Students } from "./students.js";
 
 const html = htm.bind(React.createElement);
 
@@ -28,7 +29,10 @@ const MENU = {
   teacher: ["নম্বর এন্ট্রি", "আমার বরাদ্দ"],
   verifier: ["নম্বর যাচাই ও অনুমোদন", "ফলাফল দেখা"]
 };
-const PAGES = { "শ্রেণি, শাখা ও বিষয়": Structure };
+const PAGES = {
+  "শিক্ষার্থী ও Excel আপলোড": Students,
+  "শ্রেণি, শাখা ও বিষয়": Structure
+};
 
 export function Home({ profile }) {
   const [page, setPage] = useState(null);
