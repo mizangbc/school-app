@@ -91,7 +91,15 @@ function Form({ init, classId, section, rolls, onDone }) {
       if (!init) data.createdAt = serverTimestamp();
       await setDoc(doc(db, "students", sid), data, { merge: true });
       onDone(false);
-    } catch (x) { setErr("সংরক্ষণ হয়নি। ইন্টারনেট ও Rules দেখুন।"); setBusy(false); }
+    } catch (x) {
+      console.error("Save student error:", x);
+      if (x.code === "permission-denied") {
+        setErr("Firebase Rules-এ অনুমতি নেই। Firebase Console থেকে Rules আপডেট ও Publish করুন।");
+      } else {
+        setErr("সংরক্ষণ হয়নি: " + (x.message || x.code || "ইন্টারনেট সংযোগ দেখুন"));
+      }
+      setBusy(false);
+    }
   }
 
   async function remove() {
@@ -102,7 +110,10 @@ function Form({ init, classId, section, rolls, onDone }) {
       await deleteDoc(doc(db, "students", init.sid));
       onDone(false);
     } catch (x) {
-      setErr("মুছে ফেলা যায়নি। ইন্টারনেট ও Rules দেখুন।");
+      console.error("Delete student error:", x);
+      setErr(x.code === "permission-denied"
+        ? "Firebase Rules-এ অনুমতি নেই। Firebase Console থেকে Rules আপডেট করুন।"
+        : "মুছে ফেলা যায়নি: " + (x.message || x.code));
       setBusy(false);
     }
   }
@@ -239,8 +250,10 @@ function ExcelUpload({ classId, section, className, existingRolls, onDone }) {
       }
       onDone(false);
     } catch (ex) {
-      console.error(ex);
-      setErr("সংরক্ষণ করা যায়নি। ইন্টারনেট ও Firebase Rules দেখুন।");
+      console.error("Excel upload error:", ex);
+      setErr(ex.code === "permission-denied"
+        ? "Firebase Rules-এ অনুমতি নেই। Firebase Console থেকে Rules আপডেট ও Publish করুন।"
+        : "সংরক্ষণ করা যায়নি: " + (ex.message || ex.code));
       setBusy(false);
     }
   }
