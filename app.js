@@ -134,7 +134,7 @@ function App() {
       <p class="sub">S. M. Model Govt. Primary School</p>`}
     ${state.screen === "login" && html`<${Login} />`}
     ${state.screen === "setup" && html`<${FirstSetup} />`}
-    ${state.screen === "home" && html`<${Dashboard} profile=${state.profile} />`}
+    ${state.screen === "home" && html`<${Home} profile=${state.profile} />`}
     ${state.screen === "noaccess" && html`<${NoAccess} />`}
     ${state.screen === "error" && html`<p class="err">${state.text}</p>`}
   </div>`;
