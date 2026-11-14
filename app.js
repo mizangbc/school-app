@@ -1,5 +1,5 @@
-import { Home } from "./pages.js?v=16";
-import { PublicResultSearch } from "./results.js?v=16";
+import { Home } from "./pages.js?v=17";
+import { PublicResultSearch } from "./results.js?v=17";
 import React, { useState, useEffect } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";

@@ -2,11 +2,11 @@ import React, { useState, useEffect } from "https://esm.sh/react@18.3.1";
 import htm from "https://esm.sh/htm@3.1.1";
 import { auth, db } from "./firebase.js";
 import {
-  collection, doc, getDoc, getDocs, setDoc, query, where, serverTimestamp
+  collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, defaultExamConfig
-} from "./exams.js?v=16";
+} from "./exams.js?v=17";
 
 const html = htm.bind(React.createElement);
 
@@ -534,6 +534,7 @@ export function Verification({ profile }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
 
   async function loadPending() {
     setLoading(true);
@@ -573,6 +574,32 @@ export function Verification({ profile }) {
     setBusy(false);
   }
 
+  async function approveAll() {
+    const pendingDocs = list.filter(m => m.status === "submitted");
+    if (pendingDocs.length === 0) return;
+    if (!confirm(`আপনি কি অপেক্ষমাণ সকল (${toBn(pendingDocs.length)}) বিষয়ের ফলাফল অনুমোদন করতে চান?`)) return;
+
+    setBusy(true);
+    setMsg("");
+    try {
+      const batch = writeBatch(db);
+      pendingDocs.forEach(m => {
+        batch.set(doc(db, "marks", m.id), {
+          status: "approved",
+          approvedBy: profile.name,
+          approvedAt: serverTimestamp()
+        }, { merge: true });
+      });
+      await batch.commit();
+      setMsg("সকল অপেক্ষমাণ বিষয়ের ফলাফল সফলভাবে অনুমোদিত হয়েছে।");
+      loadPending();
+    } catch (ex) {
+      console.error(ex);
+      alert("অনুমোদন করা যায়নি: " + (ex.message || ex.code));
+    }
+    setBusy(false);
+  }
+
   if (loading) return html`<p class="sub">নম্বর তালিকা লোড হচ্ছে…</p>`;
 
   const pending = list.filter(m => m.status === "submitted");
@@ -581,37 +608,86 @@ export function Verification({ profile }) {
   return html`<div style=${{ marginTop: "14px" }}>
     ${msg && html`<p class="ok">${msg}</p>`}
 
-    <div style=${{ fontWeight: 600, fontSize: "1.05rem", margin: "10px 0" }}>
-      অনুমোদনের অপেক্ষায় (মোট: ${toBn(pending.length)} টি)
+    <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", margin: "10px 0" }}>
+      <div style=${{ fontWeight: 700, fontSize: "1.05rem", color: pending.length > 0 ? "#c62828" : "var(--ink)" }}>
+        🔔 অনুমোদনের অপেক্ষায় থাকা বিষয়সমূহ (মোট: ${toBn(pending.length)} টি)
+      </div>
+      ${pending.length > 0 && html`<button type="button" disabled=${busy} onClick=${approveAll}
+        style=${{ width: "auto", margin: 0, padding: "6px 16px", background: "var(--acc)", color: "#fff", fontWeight: 700 }}>
+        ✓ সকল বিষয়ের নম্বর একসাথে অনুমোদন করুন
+      </button>`}
     </div>
 
     ${pending.length === 0
-      ? html`<div class="card"><p class="sub" style=${{ margin: 0 }}>আপাতত অনুমোদনের জন্য কোনো জমা দেওয়া নম্বর নেই।</p></div>`
+      ? html`<div class="card"><p class="sub" style=${{ margin: 0 }}>আপাতত অনুমোদনের জন্য কোনো জমা দেওয়া নম্বর নেই। সকল বিষয় অনুমোদিত রয়েছে।</p></div>`
       : html`<div class="grid" style=${{ marginTop: 0 }}>
-          ${pending.map(m => html`<div class="card" key=${m.id}>
-            <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <b style=${{ fontSize: "1.1rem" }}>${m.termName || "মূল্যায়ন"}</b>
-                <div style=${{ color: "var(--acc)", fontWeight: 600, marginTop: "2px" }}>
-                  ${m.className} (${m.section}) • ${m.subject}
-                </div>
-                <div style=${{ fontSize: "0.85rem", color: "var(--mute)", marginTop: "2px" }}>
-                  শিক্ষক: ${m.updatedBy || "অজ্ঞাত"} • ধারাবাহিক: ${toBn(m.contFull)} + সামষ্টিক: ${toBn(m.termFull)} = ১০০
-                </div>
-              </div>
-              <span class="role" style=${{ background: "#fff3cd", color: "#856404" }}>জমা দেওয়া</span>
-            </div>
+          ${pending.map(m => {
+            const isExp = expandedId === m.id;
+            const recordsList = Object.values(m.records || {}).sort((a, b) => a.roll - b.roll);
 
-            <div style=${{ display: "flex", gap: "8px", marginTop: "14px" }}>
-              <button disabled=${busy} style=${{ flex: 1, margin: 0, padding: "8px" }} onClick=${() => updateStatus(m.id, "approved")}>
-                অনুমোদন করুন
-              </button>
-              <button type="button" class="danger" disabled=${busy} style=${{ flex: 1, margin: 0, padding: "8px" }}
-                onClick=${() => updateStatus(m.id, "draft")}>
-                সংশোধনে ফেরত
-              </button>
-            </div>
-          </div>`)}
+            return html`<div class="card" key=${m.id} style=${{ borderLeft: "4px solid #f9a825" }}>
+              <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
+                <div>
+                  <b style=${{ fontSize: "1.1rem" }}>${m.termName || "মূল্যায়ন"}</b>
+                  <div style=${{ color: "var(--acc)", fontWeight: 700, marginTop: "2px", fontSize: "1rem" }}>
+                    ${m.className} (${m.section}) • ${m.subject}
+                  </div>
+                  <div style=${{ fontSize: "0.85rem", color: "var(--mute)", marginTop: "2px" }}>
+                    শিক্ষক: <b>${m.updatedBy || "অজ্ঞাত"}</b> • ধারাবাহিক: ${toBn(m.contFull)} + সামষ্টিক: ${toBn(m.termFull)} = ১০০
+                  </div>
+                </div>
+                <span class="role" style=${{ background: "#fff3cd", color: "#856404", fontWeight: 700 }}>
+                  ⏳ জমা দেওয়া (${toBn(recordsList.length)} জন শিক্ষার্থী)
+                </span>
+              </div>
+
+              <!-- বিস্তারিত নম্বর তালিকা প্রদর্শন -->
+              <div style=${{ marginTop: "10px" }}>
+                <button type="button" class="ghost" onClick=${() => setExpandedId(isExp ? null : m.id)}
+                  style=${{ width: "auto", margin: 0, padding: "4px 10px", fontSize: "0.8rem", color: "var(--acc)", fontWeight: 600 }}>
+                  ${isExp ? "▲ নম্বর তালিকা লুকান" : "👁️ শিক্ষার্থীর নম্বর ও গ্রেড বিস্তারিত দেখুন"}
+                </button>
+
+                ${isExp && html`<div style=${{ marginTop: "10px", overflowX: "auto", maxHeight: "280px", border: "1px solid var(--line)", borderRadius: "6px" }}>
+                  <table style=${{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem", textAlign: "center" }}>
+                    <thead>
+                      <tr style=${{ background: "var(--bg)", borderBottom: "1px solid var(--line)" }}>
+                        <th style=${{ padding: "6px" }}>রোল</th>
+                        <th style=${{ padding: "6px", textAlign: "left" }}>শিক্ষার্থীর নাম</th>
+                        <th style=${{ padding: "6px" }}>ধারাবাহিক (${toBn(m.contFull)})</th>
+                        <th style=${{ padding: "6px" }}>সামষ্টিক (${toBn(m.termFull)})</th>
+                        <th style=${{ padding: "6px" }}>মোট</th>
+                        <th style=${{ padding: "6px" }}>গ্রেড</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${recordsList.map(r => html`<tr key=${r.sid} style=${{ borderBottom: "1px solid var(--line)", background: r.absent ? "#fff8f8" : "#fff" }}>
+                        <td style=${{ padding: "5px" }}>${toBn(r.roll)}</td>
+                        <td style=${{ padding: "5px", textAlign: "left", fontWeight: 600 }}>${r.name}</td>
+                        <td style=${{ padding: "5px" }}>${r.absent ? "অনুপস্থিত" : toBn(r.continuous)}</td>
+                        <td style=${{ padding: "5px" }}>${r.absent ? "অনুপস্থিত" : toBn(r.terminal)}</td>
+                        <td style=${{ padding: "5px", fontWeight: 700 }}>${r.absent ? "অনুপস্থিত" : toBn(r.total)}</td>
+                        <td style=${{ padding: "5px", fontWeight: 700, color: r.grade === "অগ্রগতি প্রয়োজন" ? "var(--err)" : "var(--acc)" }}>
+                          ${r.grade}
+                        </td>
+                      </tr>`)}
+                    </tbody>
+                  </table>
+                </div>`}
+              </div>
+
+              <div style=${{ display: "flex", gap: "8px", marginTop: "14px" }}>
+                <button disabled=${busy} style=${{ flex: 1, margin: 0, padding: "8px", background: "var(--acc)", color: "#fff", fontWeight: 700 }}
+                  onClick=${() => updateStatus(m.id, "approved")}>
+                  ✓ এই বিষয়ের নম্বর অনুমোদন করুন
+                </button>
+                <button type="button" class="danger" disabled=${busy} style=${{ flex: 1, margin: 0, padding: "8px" }}
+                  onClick=${() => updateStatus(m.id, "draft")}>
+                  ↩ সংশোধনে ফেরত পাঠান
+                </button>
+              </div>
+            </div>`;
+          })}
         </div>`}
 
     <div style=${{ fontWeight: 600, fontSize: "1.05rem", margin: "24px 0 10px" }}>
