@@ -265,23 +265,31 @@ export function Exams() {
         বাম কলামে গ্রেডের নাম এবং ডান কলামে নম্বর পরিসর (শুরু - শেষ) সরাসরি বক্সে লিখে পরিবর্তন করুন:
       </p>
 
-      <div style=${{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
-        <span style=${{ fontSize: "0.85rem", color: "var(--mute)", fontWeight: 600 }}>প্রিসেট:</span>
-        <button type="button" class="ghost" style=${{ padding: "4px 10px", fontSize: "0.85rem", width: "auto" }} onClick=${() => applyPreset(LETTER_GRADES)}>
-          লেটার গ্রেড (A+, A...)
-        </button>
-        <button type="button" class="ghost" style=${{ padding: "4px 10px", fontSize: "0.85rem", width: "auto" }} onClick=${() => applyPreset(DESCRIPTIVE_GRADES)}>
-          বর্ণনামূলক (অতি উত্তম, উত্তম...)
-        </button>
+      <div style=${{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+        <div style=${{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+          <span style=${{ fontSize: "0.85rem", color: "var(--mute)", fontWeight: 600 }}>প্রিসেট:</span>
+          <button type="button" class="ghost" style=${{ padding: "4px 10px", fontSize: "0.85rem", width: "auto" }} onClick=${() => applyPreset(LETTER_GRADES)}>
+            লেটার গ্রেড (A+, A...)
+          </button>
+          <button type="button" class="ghost" style=${{ padding: "4px 10px", fontSize: "0.85rem", width: "auto" }} onClick=${() => applyPreset(DESCRIPTIVE_GRADES)}>
+            বর্ণনামূলক (অতি উত্তম, উত্তম...)
+          </button>
+        </div>
+
+        <label style=${{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "0.85rem", background: "var(--bg)", padding: "5px 10px", borderRadius: "6px", border: "1px solid var(--line)" }}>
+          <input type="checkbox" checked=${config.displayOptions?.showGpa}
+            onChange=${e => updateDisplay("showGpa", e.target.checked)} style=${{ width: "auto" }} />
+          <span style=${{ fontWeight: 600 }}>জিপিএ (GPA) পয়েন্ট রাখুন</span>
+        </label>
       </div>
 
       <div style=${{ overflowX: "auto", margin: "6px 0 12px" }}>
-        <table style=${{ width: "100%", borderCollapse: "collapse", minWidth: "320px" }}>
+        <table style=${{ width: "100%", borderCollapse: "collapse", minWidth: "300px" }}>
           <thead>
             <tr style=${{ background: "var(--bg)", borderBottom: "2px solid var(--line)", textAlign: "left" }}>
               <th style=${{ padding: "10px 8px", fontSize: "0.88rem" }}>গ্রেড / মান</th>
               <th style=${{ padding: "10px 8px", fontSize: "0.88rem", textAlign: "center" }}>নম্বর পরিসর (%)</th>
-              <th style=${{ padding: "10px 6px", fontSize: "0.88rem", textAlign: "center", width: "58px" }}>পয়েন্ট</th>
+              ${config.displayOptions?.showGpa && html`<th style=${{ padding: "10px 6px", fontSize: "0.88rem", textAlign: "center", width: "58px" }}>পয়েন্ট</th>`}
               <th style=${{ padding: "10px 4px", width: "36px" }}></th>
             </tr>
           </thead>
@@ -303,11 +311,11 @@ export function Exams() {
                     style=${{ width: "54px", padding: "8px 4px", textAlign: "center", fontWeight: 600, borderRadius: "6px", border: "1px solid var(--line)" }} />
                 </div>
               </td>
-              <td style=${{ padding: "8px 4px", textAlign: "center" }}>
+              ${config.displayOptions?.showGpa && html`<td style=${{ padding: "8px 4px", textAlign: "center" }}>
                 <input type="text" value=${g.gpa} placeholder="5.0"
                   onInput=${e => updateGrade(i, "gpa", e.target.value)}
                   style=${{ width: "50px", padding: "8px 4px", textAlign: "center", fontWeight: 600, borderRadius: "6px", border: "1px solid var(--line)" }} />
-              </td>
+              </td>`}
               <td style=${{ padding: "8px 2px", textAlign: "center" }}>
                 <button type="button" class="danger"
                   style=${{ width: "28px", height: "34px", padding: 0, margin: 0, fontSize: "1.2rem", lineHeight: 1, borderRadius: "6px" }}
