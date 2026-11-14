@@ -37,8 +37,8 @@ export function defaultExamConfig() {
       { id: "term3", name: "বার্ষিক মূল্যায়ন", active: true, weight: 50 }
     ],
     assessmentRatio: {
-      continuous: 30, // ধারাবাহিক মূল্যায়ন ৩০%
-      written: 70     // প্রান্তিক লিখিত পরীক্ষা ৭০%
+      continuous: 30,
+      written: 70
     },
     grading: LETTER_GRADES,
     passMarkPercent: 33,
@@ -144,20 +144,17 @@ export function Exams() {
     setErr("");
     setOkMsg("");
 
-    // ১. টার্মিনাল ওজন যাচাই
-    const totalWeight = config.terminals.reduce((sum, t) => sum + (parseInt(digits(t.weight), 10) || 0), 0);
+    const totalWeight = (config.terminals || []).reduce((sum, t) => sum + (parseInt(digits(t.weight), 10) || 0), 0);
     if (totalWeight !== 100) {
       return setErr(`বার্ষিক ফলাফলে সব প্রান্তিকের ওজনের মোট যোগফল ১০০% হতে হবে (বর্তমানে আছে: ${toBn(totalWeight)}%)।`);
     }
 
-    // ২. ধারাবাহিক ও লিখিত অনুপাত যাচাই
     const totalRatio = (parseInt(digits(config.assessmentRatio.continuous), 10) || 0) +
                        (parseInt(digits(config.assessmentRatio.written), 10) || 0);
     if (totalRatio !== 100) {
       return setErr(`ধারাবাহিক ও লিখিত মূল্যায়নের যোগফল ১০০% হতে হবে।`);
     }
 
-    // ৩. গ্রেডিং তালিকা যাচাই ও ক্লিনআপ
     const finalGrading = [];
     for (let i = 0; i < config.grading.length; i++) {
       const g = config.grading[i];
@@ -201,17 +198,16 @@ export function Exams() {
   if (loading) return html`<p class="sub">পরীক্ষার সেটিং লোড হচ্ছে…</p>`;
   if (!config) return html`<p class="err">${err || "সেটিং পাওয়া যায়নি।"}</p>`;
 
-  const totalTermWeight = config.terminals.reduce((sum, t) => sum + (parseInt(digits(t.weight), 10) || 0), 0);
+  const totalTermWeight = (config.terminals || []).reduce((sum, t) => sum + (parseInt(digits(t.weight), 10) || 0), 0);
 
   return html`<div style=${{ marginTop: "14px" }}>
-    <!-- ১. প্রান্তিক পরীক্ষা ও বার্ষিক ওজন -->
     <div class="card" style=${{ marginBottom: "16px" }}>
       <h3 style=${{ margin: "0 0 10px", fontSize: "1.1rem" }}>১. প্রান্তিক পরীক্ষা ও বার্ষিক ওজনের হার</h3>
       <p class="sub" style=${{ margin: "0 0 12px", fontSize: "0.9rem" }}>
         বার্ষিক চূড়ান্ত ফলাফল তৈরিতে প্রতি প্রান্তিকের শতকরা ওজন (মোট ১০০%):
       </p>
 
-      ${config.terminals.map((t, i) => html`<div key=${t.id} style=${{
+      ${(config.terminals || []).map((t, i) => html`<div key=${t.id} style=${{
         display: "flex", alignItems: "center", gap: "10px",
         padding: "8px 0", borderBottom: "1px dashed var(--line)"
       }}>
@@ -234,7 +230,6 @@ export function Exams() {
       </div>
     </div>
 
-    <!-- ২. ধারাবাহিক ও লিখিত পরীক্ষার অনুপাত -->
     <div class="card" style=${{ marginBottom: "16px" }}>
       <h3 style=${{ margin: "0 0 10px", fontSize: "1.1rem" }}>২. ধারাবাহিক ও লিখিত মূল্যায়নের অনুপাত</h3>
       <p class="sub" style=${{ margin: "0 0 12px", fontSize: "0.9rem" }}>
@@ -244,12 +239,12 @@ export function Exams() {
       <div style=${{ display: "flex", gap: "12px" }}>
         <div style=${{ flex: 1 }}>
           <label style=${{ marginTop: 0 }}>ধারাবাহিক মূল্যায়ন (%)</label>
-          <input type="tel" inputMode="numeric" value=${config.assessmentRatio.continuous}
+          <input type="tel" inputMode="numeric" value=${config.assessmentRatio?.continuous ?? 30}
             onInput=${e => updateRatio("continuous", e.target.value)} />
         </div>
         <div style=${{ flex: 1 }}>
           <label style=${{ marginTop: 0 }}>প্রান্তিক লিখিত পরীক্ষা (%)</label>
-          <input type="tel" inputMode="numeric" value=${config.assessmentRatio.written}
+          <input type="tel" inputMode="numeric" value=${config.assessmentRatio?.written ?? 70}
             onInput=${e => updateRatio("written", e.target.value)} />
         </div>
       </div>
@@ -258,7 +253,6 @@ export function Exams() {
       </p>
     </div>
 
-    <!-- ৩. কলাম আকারে গ্রেডিং ও নম্বর পরিসর -->
     <div class="card" style=${{ marginBottom: "16px" }}>
       <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
         <h3 style=${{ margin: 0, fontSize: "1.1rem" }}>৩. গ্রেডিং ও নম্বর পরিসর নির্ধারণ</h3>
@@ -271,7 +265,6 @@ export function Exams() {
         বাম কলামে গ্রেডের নাম এবং ডান কলামে নম্বর পরিসর (শুরু - শেষ) সরাসরি বক্সে লিখে পরিবর্তন করুন:
       </p>
 
-      <!-- দ্রুত পছন্দের প্রিসেট -->
       <div style=${{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
         <span style=${{ fontSize: "0.85rem", color: "var(--mute)", fontWeight: 600 }}>প্রিসেট:</span>
         <button type="button" class="ghost" style=${{ padding: "4px 10px", fontSize: "0.85rem", width: "auto" }} onClick=${() => applyPreset(LETTER_GRADES)}>
@@ -282,7 +275,6 @@ export function Exams() {
         </button>
       </div>
 
-      <!-- কলাম ভিত্তিক টেবিল -->
       <div style=${{ overflowX: "auto", margin: "6px 0 12px" }}>
         <table style=${{ width: "100%", borderCollapse: "collapse", minWidth: "320px" }}>
           <thead>
@@ -294,7 +286,7 @@ export function Exams() {
             </tr>
           </thead>
           <tbody>
-            ${config.grading.map((g, i) => html`<tr key=${i} style=${{ borderBottom: "1px solid var(--line)" }}>
+            ${(config.grading || []).map((g, i) => html`<tr key=${i} style=${{ borderBottom: "1px solid var(--line)" }}>
               <td style=${{ padding: "8px 6px" }}>
                 <input type="text" value=${g.grade} placeholder="A+ বা অতি উত্তম"
                   onInput=${e => updateGrade(i, "grade", e.target.value)}
@@ -326,38 +318,36 @@ export function Exams() {
         </table>
       </div>
 
-      <!-- পাস নম্বর -->
       <div style=${{ marginTop: "10px", padding: "10px 12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style=${{ fontWeight: 600, fontSize: "0.95rem" }}>ন্যূনতম পাস নম্বর (%)</span>
         <div style=${{ width: "90px" }}>
-          <input type="number" value=${config.passMarkPercent}
+          <input type="number" value=${config.passMarkPercent ?? 33}
             onInput=${e => setConfig({ ...config, passMarkPercent: e.target.value })}
             style=${{ padding: "8px", textAlign: "center", fontWeight: 600, background: "#fff" }} />
         </div>
       </div>
     </div>
 
-    <!-- ৪. মার্কশিট ও রেজাল্ট প্রদর্শন অপশন -->
     <div class="card" style=${{ marginBottom: "16px" }}>
       <h3 style=${{ margin: "0 0 10px", fontSize: "1.1rem" }}>৪. মার্কশিট প্রদর্শন অপশন</h3>
       <div style=${{ display: "grid", gap: "8px" }}>
         <label style=${{ display: "flex", alignItems: "center", gap: "10px", margin: 0, cursor: "pointer" }}>
-          <input type="checkbox" checked=${config.displayOptions.showMarks}
+          <input type="checkbox" checked=${config.displayOptions?.showMarks}
             onChange=${e => updateDisplay("showMarks", e.target.checked)} style=${{ width: "auto" }} />
           <span>অর্জিত পূর্ণ নম্বর প্রদর্শন করুন</span>
         </label>
         <label style=${{ display: "flex", alignItems: "center", gap: "10px", margin: 0, cursor: "pointer" }}>
-          <input type="checkbox" checked=${config.displayOptions.showGrade}
+          <input type="checkbox" checked=${config.displayOptions?.showGrade}
             onChange=${e => updateDisplay("showGrade", e.target.checked)} style=${{ width: "auto" }} />
           <span>গ্রেড / অর্জন মাত্রা প্রদর্শন করুন</span>
         </label>
         <label style=${{ display: "flex", alignItems: "center", gap: "10px", margin: 0, cursor: "pointer" }}>
-          <input type="checkbox" checked=${config.displayOptions.showGpa}
+          <input type="checkbox" checked=${config.displayOptions?.showGpa}
             onChange=${e => updateDisplay("showGpa", e.target.checked)} style=${{ width: "auto" }} />
           <span>জিপিএ (GPA) প্রদর্শন করুন</span>
         </label>
         <label style=${{ display: "flex", alignItems: "center", gap: "10px", margin: 0, cursor: "pointer" }}>
-          <input type="checkbox" checked=${config.displayOptions.showMeritRank}
+          <input type="checkbox" checked=${config.displayOptions?.showMeritRank}
             onChange=${e => updateDisplay("showMeritRank", e.target.checked)} style=${{ width: "auto" }} />
           <span>শ্রেণি মেধা স্থান (Merit Position) প্রদর্শন করুন</span>
         </label>
