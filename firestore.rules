@@ -1,37 +1,34 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function userDoc(uid) { return /databases/$(database)/documents/users/$(uid); }
-    function hasProfile() { return signedIn() && exists(userDoc(request.auth.uid)); }
-    function isMain() { return hasProfile() && get(userDoc(request.auth.uid)).data.role == 'main_admin'; }
-    function initDone() { return exists(/databases/$(database)/documents/settings/init); }
-
-    match /users/{uid} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid == uid
-                    && request.resource.data.role == 'main_admin' && !initDone();
-      allow create, update, delete: if isMain();
-    }
-    match /settings/init {
-      allow get: if true;
-      allow create: if signedIn() && !initDone();
-      allow update, delete: if false;
-    }
+    // পাবলিক রিড (অভিভাবকদের রেজাল্ট অনুসন্ধান ও প্রাথমিক কনফিগারেশন)
     match /config/{docId} {
       allow read: if true;
-      allow write: if signedIn();
-    }
-    match /students/{sid} {
-      allow read, write: if signedIn();
-    }
-    match /marks/{markId} {
-      allow read, write: if signedIn();
+      allow write: if request.auth != null;
     }
     match /results/{resId} {
       allow read: if true;
-      allow write: if signedIn();
+      allow write: if request.auth != null;
     }
-    match /{document=**} { allow read, write: if false; }
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // লগইনকৃত ব্যবহারকারী (অ্যাডমিন ও শিক্ষক) - শিক্ষার্থী ও নম্বর এন্ট্রি
+    match /users/{uid} {
+      allow read, write: if request.auth != null;
+    }
+    match /students/{sid} {
+      allow read, write: if request.auth != null;
+    }
+    match /marks/{markId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ডিফল্ট সিকিউরিটি: লগইন করা থাকলে অনুমতি, অন্যথায় নিষেধ
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
   }
 }
