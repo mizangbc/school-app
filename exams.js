@@ -258,22 +258,22 @@ export function Exams() {
       </p>
     </div>
 
-    <!-- ৩. সম্পূর্ণ নতুন ডিজাইনে গ্রেডিং স্কেল এডিটর -->
+    <!-- ৩. কলাম আকারে গ্রেডিং ও নম্বর পরিসর -->
     <div class="card" style=${{ marginBottom: "16px" }}>
       <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
-        <h3 style=${{ margin: 0, fontSize: "1.1rem" }}>৩. গ্রেডিং ও নম্বর পরিসীমা নির্ধারণ</h3>
-        <button type="button" class="ghost" style=${{ width: "auto", padding: "6px 14px", fontSize: "0.9rem", color: "var(--acc)", borderColor: "var(--acc)" }} onClick=${addGrade}>
-          + নতুন গ্রেড যোগ
+        <h3 style=${{ margin: 0, fontSize: "1.1rem" }}>৩. গ্রেডিং ও নম্বর পরিসর নির্ধারণ</h3>
+        <button type="button" class="ghost" style=${{ width: "auto", padding: "6px 14px", fontSize: "0.88rem", color: "var(--acc)", borderColor: "var(--acc)" }} onClick=${addGrade}>
+          + নতুন গ্রেড সারি যোগ
         </button>
       </div>
 
-      <p class="sub" style=${{ margin: "0 0 12px", fontSize: "0.88rem" }}>
-        নিচের প্রতিটি বক্সে ক্লিক করে সরাসরি গ্রেডের নাম (যেমন A+ বা অতি উত্তম) এবং কত থেকে কত নম্বর পর্যন্ত তা লিখে দিন:
+      <p class="sub" style=${{ margin: "0 0 10px", fontSize: "0.88rem" }}>
+        বাম কলামে গ্রেডের নাম এবং ডান কলামে নম্বর পরিসর (শুরু - শেষ) সরাসরি বক্সে লিখে পরিবর্তন করুন:
       </p>
 
       <!-- দ্রুত পছন্দের প্রিসেট -->
-      <div style=${{ display: "flex", gap: "8px", marginBottom: "14px", flexWrap: "wrap", alignItems: "center" }}>
-        <span style=${{ fontSize: "0.85rem", color: "var(--mute)", fontWeight: 600 }}>দ্রুত প্রিসেট:</span>
+      <div style=${{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
+        <span style=${{ fontSize: "0.85rem", color: "var(--mute)", fontWeight: 600 }}>প্রিসেট:</span>
         <button type="button" class="ghost" style=${{ padding: "4px 10px", fontSize: "0.85rem", width: "auto" }} onClick=${() => applyPreset(LETTER_GRADES)}>
           লেটার গ্রেড (A+, A...)
         </button>
@@ -282,67 +282,60 @@ export function Exams() {
         </button>
       </div>
 
-      <!-- গ্রেড সারি কার্ডসমূহ (প্রত্যেকটি পরিষ্কার ও সুনির্দিষ্ট) -->
-      <div style=${{ display: "grid", gap: "10px" }}>
-        ${config.grading.map((g, i) => html`<div key=${i} style=${{
-          background: "#fff",
-          border: "1.5px solid var(--line)",
-          borderRadius: "8px",
-          padding: "12px",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
-        }}>
-          <!-- উপরের সারি: গ্রেড নাম, পয়েন্ট এবং বাদ দিন বোতাম -->
-          <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-            <span style=${{ fontWeight: 700, color: "var(--acc)", fontSize: "0.95rem" }}>
-              গ্রেড ধাপ #${toBn(i + 1)}
-            </span>
-            <button type="button" class="danger" style=${{ width: "auto", padding: "3px 10px", fontSize: "0.82rem", margin: 0 }}
-              onClick=${() => removeGrade(i)}>
-              মুছে ফেলুন
-            </button>
-          </div>
-
-          <div style=${{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "10px", marginBottom: "10px" }}>
-            <div>
-              <label style=${{ margin: "0 0 4px", fontSize: "0.82rem", color: "var(--mute)", fontWeight: 600 }}>
-                গ্রেডের নাম বা অর্জিত মান
-              </label>
-              <input type="text" value=${g.grade} placeholder="যেমন: A+ বা অতি উত্তম"
-                onInput=${e => updateGrade(i, "grade", e.target.value)}
-                style=${{ padding: "9px 10px", fontWeight: 600, fontSize: "0.95rem" }} />
-            </div>
-            <div>
-              <label style=${{ margin: "0 0 4px", fontSize: "0.82rem", color: "var(--mute)", fontWeight: 600 }}>
-                পয়েন্ট (GPA)
-              </label>
-              <input type="text" value=${g.gpa} placeholder="5.0"
-                onInput=${e => updateGrade(i, "gpa", e.target.value)}
-                style=${{ padding: "9px 6px", textAlign: "center", fontWeight: 600 }} />
-            </div>
-          </div>
-
-          <!-- নিচের সারি: নম্বর পরিসীমা (কত থেকে কত) -->
-          <div>
-            <label style=${{ margin: "0 0 4px", fontSize: "0.82rem", color: "var(--mute)", fontWeight: 600 }}>
-              নম্বর পরিসীমা (%)
-            </label>
-            <div style=${{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <input type="number" value=${g.min} placeholder="সর্বনিম্ন"
-                onInput=${e => updateGrade(i, "min", e.target.value)}
-                style=${{ padding: "9px 8px", textAlign: "center", flex: 1, fontWeight: 600 }} />
-              <span style=${{ fontSize: "0.9rem", color: "var(--mute)", fontWeight: 600 }}>থেকে</span>
-              <input type="number" value=${g.max} placeholder="সর্বোচ্চ"
-                onInput=${e => updateGrade(i, "max", e.target.value)}
-                style=${{ padding: "9px 8px", textAlign: "center", flex: 1, fontWeight: 600 }} />
-              <span style=${{ fontSize: "0.9rem", color: "var(--mute)", fontWeight: 600 }}>নম্বর</span>
-            </div>
-          </div>
-        </div>`)}
+      <!-- কলাম ভিত্তিক টেবিল -->
+      <div style=${{ overflowX: "auto", margin: "6px 0 12px" }}>
+        <table style=${{ width: "100%", borderCollapse: "collapse", minWidth: "320px" }}>
+          <thead>
+            <tr style=${{ background: "var(--bg)", borderBottom: "2px solid var(--line)", textAlign: "left" }}>
+              <th style=${{ padding: "10px 8px", fontSize: "0.88rem" }}>গ্রেড / মান</th>
+              <th style=${{ padding: "10px 8px", fontSize: "0.88rem", textAlign: "center" }}>নম্বর পরিসর (%)</th>
+              <th style=${{ padding: "10px 6px", fontSize: "0.88rem", textAlign: "center", width: "58px" }}>পয়েন্ট</th>
+              <th style=${{ padding: "10px 4px", width: "36px" }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${config.grading.map((g, i) => html`<tr key=${i} style=${{ borderBottom: "1px solid var(--line)" }}>
+              <td style=${{ padding: "8px 6px" }}>
+                <input type="text" value=${g.grade} placeholder="A+ বা অতি উত্তম"
+                  onInput=${e => updateGrade(i, "grade", e.target.value)}
+                  style=${{ width: "100%", padding: "8px 10px", fontWeight: 600, borderRadius: "6px", border: "1px solid var(--line)" }} />
+              </td>
+              <td style=${{ padding: "8px 6px" }}>
+                <div style=${{ display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}>
+                  <input type="number" value=${g.min} placeholder="শুরু"
+                    onInput=${e => updateGrade(i, "min", e.target.value)}
+                    style=${{ width: "54px", padding: "8px 4px", textAlign: "center", fontWeight: 600, borderRadius: "6px", border: "1px solid var(--line)" }} />
+                  <span style=${{ color: "var(--mute)", fontWeight: 700 }}>-</span>
+                  <input type="number" value=${g.max} placeholder="শেষ"
+                    onInput=${e => updateGrade(i, "max", e.target.value)}
+                    style=${{ width: "54px", padding: "8px 4px", textAlign: "center", fontWeight: 600, borderRadius: "6px", border: "1px solid var(--line)" }} />
+                </div>
+              </td>
+              <td style=${{ padding: "8px 4px", textAlign: "center" }}>
+                <input type="text" value=${g.gpa} placeholder="5.0"
+                  onInput=${e => updateGrade(i, "gpa", e.target.value)}
+                  style=${{ width: "50px", padding: "8px 4px", textAlign: "center", fontWeight: 600, borderRadius: "6px", border: "1px solid var(--line)" }} />
+              </td>
+              <td style=${{ padding: "8px 2px", textAlign: "center" }}>
+                <button type="button" class="danger"
+                  style=${{ width: "28px", height: "34px", padding: 0, margin: 0, fontSize: "1.2rem", lineHeight: 1, borderRadius: "6px" }}
+                  onClick=${() => removeGrade(i)} title="মুছে ফেলুন">×</button>
+              </td>
+            </tr>`)}
+          </tbody>
+        </table>
       </div>
 
       <!-- পাস নম্বর -->
-      <div style=${{ marginTop: "14px", padding: "10px 12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style=${{ marginTop: "10px", padding: "10px 12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style=${{ fontWeight: 600, fontSize: "0.95rem" }}>ন্যূনতম পাস নম্বর (%)</span>
+        <div style=${{ width: "90px" }}>
+          <input type="number" value=${config.passMarkPercent}
+            onInput=${e => setConfig({ ...config, passMarkPercent: e.target.value })}
+            style=${{ padding: "8px", textAlign: "center", fontWeight: 600, background: "#fff" }} />
+        </div>
+      </div>
+    </div>
         <div style=${{ width: "90px" }}>
           <input type="number" value=${config.passMarkPercent}
             onInput=${e => setConfig({ ...config, passMarkPercent: e.target.value })}
