@@ -4,7 +4,7 @@ import { db } from "./firebase.js";
 import {
   collection, doc, getDoc, getDocs, setDoc, query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { DEFAULT_EXAMS, DEFAULT_ANNUAL_WEIGHTS, LETTER_GRADES } from "./exams.js?v=12";
+import { DEFAULT_EXAMS, DEFAULT_ANNUAL_WEIGHTS, LETTER_GRADES } from "./exams.js?v=13";
 
 const html = htm.bind(React.createElement);
 

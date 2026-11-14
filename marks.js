@@ -160,6 +160,33 @@ export function MarksEntry({ profile }) {
     setSyncStatus("dirty");
   }
 
+  // এন্টার বা ডাউন অ্যারো চাপলে পরবর্তী শিক্ষার্থীর ইনপুট বক্সে ফোকাস
+  function handleKeyDown(e, idx) {
+    if (e.key === "Enter" || e.key === "ArrowDown") {
+      e.preventDefault();
+      for (let next = idx + 1; next < students.length; next++) {
+        const el = document.getElementById(`score_input_${next}`);
+        if (el && !el.disabled) {
+          el.focus();
+          el.select?.();
+          return;
+        }
+      }
+      const saveBtn = document.getElementById("btn_save_draft");
+      if (saveBtn) saveBtn.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      for (let prev = idx - 1; prev >= 0; prev--) {
+        const el = document.getElementById(`score_input_${prev}`);
+        if (el && !el.disabled) {
+          el.focus();
+          el.select?.();
+          return;
+        }
+      }
+    }
+  }
+
   // ড্রাফট / ফাইনাল সেভ
   async function saveMarks(newStatus = "draft") {
     setErr("");
@@ -358,7 +385,10 @@ export function MarksEntry({ profile }) {
       ${students.length === 0
         ? html`<p class="sub" style=${{ textAlign: "center", margin: "20px 0" }}>এই শ্রেণিতে কোনো শিক্ষার্থী পাওয়া যায়নি।</p>`
         : html`<div style=${{ display: "grid", gap: "10px" }}>
-            ${students.map(s => {
+            <div style=${{ fontSize: "0.84rem", color: "var(--acc)", background: "var(--acc2)", padding: "7px 12px", borderRadius: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>⌨️</span> <span><b>দ্রুত নম্বর এন্ট্রি:</b> নম্বর লিখে <b>Enter</b> অথবা <b>↓</b> চাপলে সরাসরি পরের শিক্ষার্থীর ঘরে চলে যাবে।</span>
+            </div>
+            ${students.map((s, idx) => {
               const rec = scores[s.sid] || { mark: "", isAbsent: false };
               const raw = rec.isAbsent ? 0 : (parseFloat(bn2en(rec.mark)) || 0);
               const percent = rec.isAbsent ? 0 : Math.round((raw / fullMarks) * 100 * 10) / 10;
@@ -385,9 +415,11 @@ export function MarksEntry({ profile }) {
                     <label style=${{ margin: "0 0 2px", fontSize: "0.78rem", color: "var(--mute)" }}>
                       প্রাপ্ত নম্বর (পূর্ণমান ${toBn(fullMarks)})
                     </label>
-                    <input type="tel" inputMode="numeric" value=${rec.mark} disabled=${isLocked || rec.isAbsent}
+                    <input id=${`score_input_${idx}`} type="tel" inputMode="numeric" value=${rec.mark} disabled=${isLocked || rec.isAbsent}
                       placeholder="যেমন: ${toBn(Math.min(18, fullMarks))}"
                       onInput=${e => handleScoreChange(s.sid, e.target.value)}
+                      onKeyDown=${e => handleKeyDown(e, idx)}
+                      onFocus=${e => e.target.select?.()}
                       style=${{ padding: "9px 10px", textAlign: "center", background: "#fff", fontWeight: 700, fontSize: "1.05rem" }} />
                   </div>
 
@@ -411,7 +443,7 @@ export function MarksEntry({ profile }) {
       ${note && html`<p class="ok">${note}</p>`}
 
       ${!isLocked && students.length > 0 && html`<div style=${{ display: "flex", gap: "10px", marginTop: "16px", flexWrap: "wrap" }}>
-        <button disabled=${busy} onClick=${() => saveMarks("draft")} style=${{ flex: 1, margin: 0 }}>
+        <button id="btn_save_draft" disabled=${busy} onClick=${() => saveMarks("draft")} style=${{ flex: 1, margin: 0 }}>
           ${busy ? "সংরক্ষণ হচ্ছে…" : "ড্রাফট সংরক্ষণ করুন"}
         </button>
         <button type="button" class="ghost" disabled=${busy} onClick=${handleSubmitForVerification}

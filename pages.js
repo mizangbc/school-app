@@ -2,13 +2,13 @@ import React, { useState } from "https://esm.sh/react@18.3.1";
 import htm from "https://esm.sh/htm@3.1.1";
 import { auth } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { Structure } from "./structure.js?v=12";
-import { Students } from "./students.js?v=12";
-import { Teachers, MyAssignments } from "./teachers.js?v=12";
-import { Exams } from "./exams.js?v=12";
-import { MarksEntry, Verification } from "./marks.js?v=12";
-import { ResultsView } from "./results.js?v=12";
-import { BackupAndPromotion } from "./backup.js?v=12";
+import { Structure } from "./structure.js?v=13";
+import { Students } from "./students.js?v=13";
+import { Teachers, MyAssignments } from "./teachers.js?v=13";
+import { Exams } from "./exams.js?v=13";
+import { MarksEntry, Verification } from "./marks.js?v=13";
+import { ResultsView } from "./results.js?v=13";
+import { BackupAndPromotion } from "./backup.js?v=13";
 
 const html = htm.bind(React.createElement);
 
