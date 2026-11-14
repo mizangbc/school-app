@@ -336,13 +336,6 @@ export function Exams() {
         </div>
       </div>
     </div>
-        <div style=${{ width: "90px" }}>
-          <input type="number" value=${config.passMarkPercent}
-            onInput=${e => setConfig({ ...config, passMarkPercent: e.target.value })}
-            style=${{ padding: "8px", textAlign: "center", fontWeight: 600, background: "#fff" }} />
-        </div>
-      </div>
-    </div>
 
     <!-- ৪. মার্কশিট ও রেজাল্ট প্রদর্শন অপশন -->
     <div class="card" style=${{ marginBottom: "16px" }}>
