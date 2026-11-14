@@ -2,10 +2,11 @@ import React, { useState } from "https://esm.sh/react@18.3.1";
 import htm from "https://esm.sh/htm@3.1.1";
 import { auth } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { Structure } from "./structure.js?v=8";
-import { Students } from "./students.js?v=8";
-import { Teachers, MyAssignments } from "./teachers.js?v=8";
-import { Exams } from "./exams.js?v=8";
+import { Structure } from "./structure.js?v=9";
+import { Students } from "./students.js?v=9";
+import { Teachers, MyAssignments } from "./teachers.js?v=9";
+import { Exams } from "./exams.js?v=9";
+import { MarksEntry, Verification } from "./marks.js?v=9";
 
 const html = htm.bind(React.createElement);
 
@@ -36,7 +37,10 @@ const PAGES = {
   "শ্রেণি, শাখা ও বিষয়": Structure,
   "পরীক্ষার সেটিং": Exams,
   "শিক্ষক ও বরাদ্দ": Teachers,
-  "আমার বরাদ্দ": MyAssignments
+  "আমার বরাদ্দ": MyAssignments,
+  "নম্বর এন্ট্রি": MarksEntry,
+  "যাচাই ও অনুমোদন": Verification,
+  "নম্বর যাচাই ও অনুমোদন": Verification
 };
 
 export function Home({ profile }) {

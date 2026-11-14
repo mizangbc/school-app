@@ -28,6 +28,15 @@ service cloud.firestore {
       allow read: if hasProfile();
       allow write: if isAdmin();
     }
+    match /marks/{markId} {
+      allow read: if hasProfile();
+      allow create, update: if hasProfile();
+      allow delete: if isAdmin();
+    }
+    match /results/{resId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     match /{document=**} { allow read, write: if false; }
   }
 }
