@@ -2,50 +2,51 @@ import React, { useState, useEffect } from "https://esm.sh/react@18.3.1";
 import htm from "https://esm.sh/htm@3.1.1";
 import { auth, db } from "./firebase.js";
 import {
-  doc, getDoc, getDocs, setDoc, collection, query, where, serverTimestamp
+  collection, doc, getDoc, getDocs, setDoc, query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { DEFAULT_EXAMS, defaultExamConfig } from "./exams.js";
+import {
+  DEFAULT_TERMS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, defaultExamConfig
+} from "./exams.js?v=14";
 
 const html = htm.bind(React.createElement);
-const bn2en = s => String(s || "").replace(/[০-৯]/g, d => "০১২৩৪৫৬৭৮৯".indexOf(d));
-const digits = s => bn2en(s).replace(/\D/g, "");
-const toBn = n => String(n ?? "").replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
 
-// নম্বরের শতকরা হারের ভিত্তিতে অর্জিত গ্রেড বা মান নির্ণয়
-export function calculateGrade(percent, gradingList) {
-  if (percent == null || isNaN(percent) || percent === "") return { grade: "-", gpa: 0 };
-  const p = Number(percent);
-  for (const g of gradingList) {
-    if (p >= g.min && p <= g.max) {
-      return { grade: g.grade, gpa: g.gpa, remark: g.remark || "" };
+const toBn = n => String(n ?? "").replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
+const bn2en = s => String(s || "").replace(/[০-৯]/g, d => "০১২৩৪৫৬৭৮৯".indexOf(d));
+
+function calculateGrade(percent, gradingScale = DESCRIPTIVE_GRADES) {
+  if (percent == null || isNaN(percent)) return { grade: "-", gpa: 0 };
+  const p = Math.round(percent * 100) / 100;
+  for (const g of gradingScale) {
+    const min = g.min != null ? g.min : 0;
+    const max = g.max != null ? g.max : 100;
+    if (p >= min && p <= max) {
+      return { grade: g.grade, gpa: parseFloat(g.gpa) || 0 };
     }
   }
-  return { grade: "-", gpa: 0 };
+  return { grade: "অগ্রগতি প্রয়োজন", gpa: 0 };
 }
 
-// মূল কম্পোনেন্ট: শিক্ষকদের জন্য নম্বর এন্ট্রি
 export function MarksEntry({ profile }) {
-  const [examConfig, setExamConfig] = useState(null);
-  const [structure, setStructure] = useState([]);
-  const [myAssignments, setMyAssignments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const isAdmin = profile.role === "main_admin" || profile.role === "assistant_admin";
 
-  // সিলেকশন স্টেট
-  const [examId, setExamId] = useState("ca_1_1");
+  const [structure, setStructure] = useState([]);
+  const [examConfig, setExamConfig] = useState(null);
+  const [myAssignments, setMyAssignments] = useState([]);
+
+  const [termId, setTermId] = useState("term_1");
   const [classId, setClassId] = useState("");
   const [section, setSection] = useState("");
   const [subject, setSubject] = useState("");
 
-  // শিক্ষার্থী ও নম্বর ডাটা
   const [students, setStudents] = useState([]);
+  const [scores, setScores] = useState({});
   const [marksDoc, setMarksDoc] = useState(null);
-  const [scores, setScores] = useState({}); // { [sid]: { mark, isAbsent } }
-  const [syncStatus, setSyncStatus] = useState("synced"); // 'synced' | 'saving' | 'dirty'
-  const [note, setNote] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
 
-  const isAdmin = profile.role === "main_admin" || profile.role === "assistant_admin";
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
+  const [syncStatus, setSyncStatus] = useState("synced");
 
   // ১. প্রাথমিক তথ্য লোড
   useEffect(() => {
@@ -59,11 +60,6 @@ export function MarksEntry({ profile }) {
 
         const eData = eSnap.exists() ? eSnap.data() : defaultExamConfig();
         setExamConfig(eData);
-
-        const examsList = (eData.exams && eData.exams.length > 0) ? eData.exams : DEFAULT_EXAMS;
-        if (examsList[0]) {
-          setExamId(examsList[0].id);
-        }
 
         const sData = sSnap.exists() ? (sSnap.data().classes || []) : [];
         setStructure(sData);
@@ -95,20 +91,25 @@ export function MarksEntry({ profile }) {
     init();
   }, [profile]);
 
+  // অনুপাত নির্ধারণ (যেমন: ১ম-২য় ৫০+৫০, ৩য়-৫ম ৩০+৭০)
+  const ratios = examConfig?.classRatios || DEFAULT_CLASS_RATIOS;
+  const curRatio = ratios[classId] || DEFAULT_CLASS_RATIOS[classId] || { continuous: 30, terminal: 70 };
+  const contFull = curRatio.continuous;
+  const termFull = curRatio.terminal;
+  const totalFull = contFull + termFull;
+
   // ২. শিক্ষার্থী ও নম্বর তালিকা লোড
   async function loadMarksheet() {
-    if (!examId || !classId || !section || !subject) return;
+    if (!termId || !classId || !section || !subject) return;
     setNote("");
     setErr("");
     try {
-      // শিক্ষার্থী লোড
       const q = query(collection(db, "students"), where("classId", "==", classId), where("section", "==", section));
       const stuSnap = await getDocs(q);
       const stuList = stuSnap.docs.map(d => d.data()).sort((a, b) => a.roll - b.roll);
       setStudents(stuList);
 
-      // বিদ্যমান নম্বর ডকুমেন্ট লোড
-      const docId = `${examId}_${classId}_${section}_${subject}`;
+      const docId = `${termId}_${classId}_${section}_${subject}`;
       const mSnap = await getDoc(doc(db, "marks", docId));
       if (mSnap.exists()) {
         const mData = mSnap.data();
@@ -118,7 +119,16 @@ export function MarksEntry({ profile }) {
         setMarksDoc({ id: docId, status: "draft" });
         const initScores = {};
         stuList.forEach(s => {
-          initScores[s.sid] = { mark: "", isAbsent: false };
+          initScores[s.sid] = {
+            ca1: "",
+            ca2: "",
+            continuous: "",
+            terminal: "",
+            total: 0,
+            pct: 0,
+            grade: "-",
+            absent: false
+          };
         });
         setScores(initScores);
       }
@@ -131,57 +141,101 @@ export function MarksEntry({ profile }) {
 
   useEffect(() => {
     loadMarksheet();
-  }, [examId, classId, section, subject]);
+  }, [termId, classId, section, subject]);
 
-  // ইনপুট হ্যান্ডলার
-  function handleScoreChange(sid, val) {
+  // ইনপুট হ্যান্ডলার (ধারা ১, ধারা ২, ধারাবাহিক, সামষ্টিক)
+  function handleScoreChange(sid, field, val) {
     if (marksDoc && marksDoc.status === "approved") return;
-    const cur = scores[sid] || { mark: "", isAbsent: false };
-    const updated = {
-      ...scores,
-      [sid]: { ...cur, mark: val }
-    };
-    setScores(updated);
+    const cur = scores[sid] || { ca1: "", ca2: "", continuous: "", terminal: "", absent: false };
+    const updatedRec = { ...cur, [field]: val };
+
+    const grading = examConfig?.grading || DESCRIPTIVE_GRADES;
+
+    // ধারা মূ-১ বা ধারা মূ-২ পরিবর্তন করলে স্বয়ংক্রিয়ভাবে ধারাবাহিক নির্ণয়
+    if (field === "ca1" || field === "ca2") {
+      const v1Raw = field === "ca1" ? val : cur.ca1;
+      const v2Raw = field === "ca2" ? val : cur.ca2;
+      const v1 = parseFloat(bn2en(v1Raw));
+      const v2 = parseFloat(bn2en(v2Raw));
+
+      if (!isNaN(v1) || !isNaN(v2)) {
+        const sum = (isNaN(v1) ? 0 : v1) + (isNaN(v2) ? 0 : v2);
+        // ৪০ থেকে contFull এ রূপান্তর (যেমন ৩০ বা ৫০)
+        const scaled = Math.round((sum / 40) * contFull * 10) / 10;
+        updatedRec.continuous = String(scaled);
+      }
+    }
+
+    // মোট নম্বর গণনা: ধারাবাহিক + সামষ্টিক
+    const cVal = parseFloat(bn2en(updatedRec.continuous)) || 0;
+    const tVal = parseFloat(bn2en(updatedRec.terminal)) || 0;
+    const total = Math.round((cVal + tVal) * 10) / 10;
+    updatedRec.total = total;
+
+    const pct = totalFull > 0 ? Math.round((total / totalFull) * 100 * 10) / 10 : 0;
+    updatedRec.pct = pct;
+
+    const { grade, gpa } = calculateGrade(pct, grading);
+    updatedRec.grade = grade;
+    updatedRec.gpa = gpa;
+
+    setScores({ ...scores, [sid]: updatedRec });
     setSyncStatus("dirty");
   }
 
   function handleAbsentToggle(sid, isAbsent) {
     if (marksDoc && marksDoc.status === "approved") return;
-    const cur = scores[sid] || { mark: "", isAbsent: false };
+    const cur = scores[sid] || { ca1: "", ca2: "", continuous: "", terminal: "", absent: false };
     const updated = {
       ...scores,
       [sid]: {
         ...cur,
-        isAbsent,
-        mark: isAbsent ? "" : cur.mark
+        absent: isAbsent,
+        grade: isAbsent ? "অনুপস্থিত" : cur.grade
       }
     };
     setScores(updated);
     setSyncStatus("dirty");
   }
 
-  // এন্টার বা ডাউন অ্যারো চাপলে পরবর্তী শিক্ষার্থীর ইনপুট বক্সে ফোকাস
-  function handleKeyDown(e, idx) {
+  // কীবোর্ডে Enter বা অ্যারো কী চেপে দ্রুত পরের শিক্ষার্থীর ঘরে যাওয়া
+  function handleKeyDown(e, idx, field) {
     if (e.key === "Enter" || e.key === "ArrowDown") {
       e.preventDefault();
-      for (let next = idx + 1; next < students.length; next++) {
-        const el = document.getElementById(`score_input_${next}`);
+      let targetField = field;
+      let targetIdx = idx;
+
+      if (field === "ca1") {
+        targetField = "ca2";
+      } else if (field === "ca2") {
+        targetField = "terminal";
+      } else if (field === "continuous") {
+        targetField = "terminal";
+      } else if (field === "terminal") {
+        targetIdx = idx + 1;
+        // যদি ca1 থাকে তবে ca1 এ, নতুবা continuous এ
+        const prevHadCa = scores[students[idx]?.sid]?.ca1 !== "";
+        targetField = prevHadCa ? "ca1" : "continuous";
+      }
+
+      for (let i = targetIdx; i < students.length; i++) {
+        const el = document.getElementById(`input_${targetField}_${i}`);
         if (el && !el.disabled) {
           el.focus();
           el.select?.();
           return;
         }
       }
+
       const saveBtn = document.getElementById("btn_save_draft");
       if (saveBtn) saveBtn.focus();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      for (let prev = idx - 1; prev >= 0; prev--) {
-        const el = document.getElementById(`score_input_${prev}`);
+      if (idx > 0) {
+        const el = document.getElementById(`input_${field}_${idx - 1}`);
         if (el && !el.disabled) {
           el.focus();
           el.select?.();
-          return;
         }
       }
     }
@@ -194,47 +248,50 @@ export function MarksEntry({ profile }) {
     setBusy(true);
     setSyncStatus("saving");
 
-    const examsList = examConfig?.exams || DEFAULT_EXAMS;
-    const curExam = examsList.find(e => e.id === examId) || DEFAULT_EXAMS[0];
-    const fullMarks = curExam.fullMarks || 100;
-    const grading = examConfig?.grading || [];
-    const docId = `${examId}_${classId}_${section}_${subject}`;
+    const curTerm = DEFAULT_TERMS.find(t => t.id === termId) || DEFAULT_TERMS[0];
+    const docId = `${termId}_${classId}_${section}_${subject}`;
     const curClass = structure.find(c => c.id === classId);
+    const grading = examConfig?.grading || DESCRIPTIVE_GRADES;
 
-    // ক্যালকুলেটেড ডাটা প্রস্তুতকরণ
     const finalRecords = {};
     students.forEach(s => {
-      const rec = scores[s.sid] || { mark: "", isAbsent: false };
-      const raw = rec.isAbsent ? 0 : (parseFloat(bn2en(rec.mark)) || 0);
-      const percent = rec.isAbsent ? 0 : Math.round((raw / fullMarks) * 100 * 10) / 10;
-      const { grade, gpa } = rec.isAbsent ? { grade: "অনুপস্থিত", gpa: 0 } : calculateGrade(percent, grading);
+      const rec = scores[s.sid] || { ca1: "", ca2: "", continuous: "", terminal: "", absent: false };
+      const isAbs = !!rec.absent;
+      const cVal = isAbs ? 0 : (parseFloat(bn2en(rec.continuous)) || 0);
+      const tVal = isAbs ? 0 : (parseFloat(bn2en(rec.terminal)) || 0);
+      const total = isAbs ? 0 : Math.round((cVal + tVal) * 10) / 10;
+      const pct = isAbs ? 0 : (totalFull > 0 ? Math.round((total / totalFull) * 100 * 10) / 10 : 0);
+      const { grade, gpa } = isAbs ? { grade: "অনুপস্থিত", gpa: 0 } : calculateGrade(pct, grading);
 
       finalRecords[s.sid] = {
         sid: s.sid,
         roll: s.roll,
         name: s.name,
-        mark: rec.isAbsent ? "" : rec.mark,
-        score: rec.isAbsent ? "অনুপস্থিত" : raw,
-        fullMarks,
-        percent: rec.isAbsent ? "অনুপস্থিত" : percent,
-        isAbsent: Boolean(rec.isAbsent),
+        ca1: isAbs ? "" : rec.ca1,
+        ca2: isAbs ? "" : rec.ca2,
+        continuous: isAbs ? "অনুপস্থিত" : cVal,
+        terminal: isAbs ? "অনুপস্থিত" : tVal,
+        total: isAbs ? "অনুপস্থিত" : total,
+        pct: isAbs ? "অনুপস্থিত" : pct,
         grade,
-        gpa
+        gpa,
+        absent: isAbs
       };
     });
 
     try {
       const payload = {
         id: docId,
-        examId,
-        examName: curExam.name,
-        phase: curExam.phase,
-        type: curExam.type,
-        fullMarks,
+        termId,
+        termName: curTerm.name,
+        phase: curTerm.phase,
         classId,
         className: curClass ? curClass.name : "",
         section,
         subject,
+        contFull,
+        termFull,
+        totalFull,
         status: newStatus,
         records: finalRecords,
         updatedBy: profile.name,
@@ -262,7 +319,7 @@ export function MarksEntry({ profile }) {
     let incomplete = 0;
     students.forEach(s => {
       const rec = scores[s.sid];
-      if (!rec || (!rec.isAbsent && rec.mark === "")) {
+      if (!rec || (!rec.absent && rec.continuous === "" && rec.terminal === "")) {
         incomplete++;
       }
     });
@@ -283,35 +340,21 @@ export function MarksEntry({ profile }) {
 
   if (!isAdmin && myAssignments.length === 0) {
     return html`<div class="card" style=${{ marginTop: "14px" }}>
-      <p>আপনাকে এখনো কোনো শ্রেণি বা বিষয় বরাদ্দ দেওয়া হয়নি।</p>
-      <p class="sub">প্রধান অ্যাডমিন বিষয় বরাদ্দ দিলে আপনি নম্বর দিতে পারবেন।</p>
+      <p>আপনাকে এখনো কোনো শ্রেণি বা বিষয় বরাদ্দ দেওয়া হয়নি।</p>
+      <p class="sub">প্রধান অ্যাডমিন বিষয় বরাদ্দ দিলে আপনি নম্বর দিতে পারবেন।</p>
     </div>`;
   }
 
-  const examsList = examConfig?.exams || DEFAULT_EXAMS;
-  const curExam = examsList.find(e => e.id === examId) || DEFAULT_EXAMS[0];
-  const fullMarks = curExam.fullMarks || 100;
-  const curClass = structure.find(c => c.id === classId) || structure[0];
-  const isLocked = marksDoc?.status === "submitted" || marksDoc?.status === "approved";
-
-  const phase1 = examsList.filter(e => e.phase === 1);
-  const phase2 = examsList.filter(e => e.phase === 2);
-  const phase3 = examsList.filter(e => e.phase === 3);
+  const curClass = structure.find(c => c.id === classId);
+  const curTerm = DEFAULT_TERMS.find(t => t.id === termId) || DEFAULT_TERMS[0];
+  const isLocked = marksDoc && marksDoc.status === "approved";
 
   return html`<div style=${{ marginTop: "14px" }}>
     <div class="card" style=${{ marginBottom: "14px" }}>
-      <label style=${{ marginTop: 0 }}>মূল্যায়ন / পরীক্ষা নির্বাচন করুন
-        <select value=${examId} onChange=${e => setExamId(e.target.value)}
+      <label style=${{ marginTop: 0 }}>মূল্যায়ন নির্বাচন করুন
+        <select value=${termId} onChange=${e => setTermId(e.target.value)}
           style=${{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--line)", fontWeight: 600 }}>
-          <optgroup label="১ম পর্যায়">
-            ${phase1.map(e => html`<option key=${e.id} value=${e.id}>${e.name} (পূর্ণমান: ${toBn(e.fullMarks)})</option>`)}
-          </optgroup>
-          <optgroup label="২য় পর্যায়">
-            ${phase2.map(e => html`<option key=${e.id} value=${e.id}>${e.name} (পূর্ণমান: ${toBn(e.fullMarks)})</option>`)}
-          </optgroup>
-          <optgroup label="৩য় পর্যায়">
-            ${phase3.map(e => html`<option key=${e.id} value=${e.id}>${e.name} (পূর্ণমান: ${toBn(e.fullMarks)})</option>`)}
-          </optgroup>
+          ${DEFAULT_TERMS.map(t => html`<option key=${t.id} value=${t.id}>${t.name}</option>`)}
         </select>
       </label>
 
@@ -358,7 +401,7 @@ export function MarksEntry({ profile }) {
       <div>
         <b style=${{ fontSize: "1.1rem" }}>${curClass?.name || ""} (${section}) • ${subject}</b>
         <div style=${{ fontSize: "0.85rem", color: "var(--mute)", marginTop: "2px" }}>
-          ${curExam.name} • পূর্ণমান: <b>${toBn(fullMarks)}</b>
+          ${curTerm.name} • ধারাবাহিক: <b>${toBn(contFull)}</b> + সামষ্টিক: <b>${toBn(termFull)}</b> = ১০০
         </div>
       </div>
       <div>
@@ -384,19 +427,17 @@ export function MarksEntry({ profile }) {
 
       ${students.length === 0
         ? html`<p class="sub" style=${{ textAlign: "center", margin: "20px 0" }}>এই শ্রেণিতে কোনো শিক্ষার্থী পাওয়া যায়নি।</p>`
-        : html`<div style=${{ display: "grid", gap: "10px" }}>
-            <div style=${{ fontSize: "0.84rem", color: "var(--acc)", background: "var(--acc2)", padding: "7px 12px", borderRadius: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
-              <span>⌨️</span> <span><b>দ্রুত নম্বর এন্ট্রি:</b> নম্বর লিখে <b>Enter</b> অথবা <b>↓</b> চাপলে সরাসরি পরের শিক্ষার্থীর ঘরে চলে যাবে।</span>
+        : html`<div style=${{ display: "grid", gap: "12px" }}>
+            <div style=${{ fontSize: "0.82rem", color: "var(--acc)", background: "var(--acc2)", padding: "7px 12px", borderRadius: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>⌨️</span> <span><b>দ্রুত এন্ট্রি:</b> ধারা ১ ও ২ লিখলে ধারাবাহিক নিজে বের হবে, অথবা সরাসরি ধারাবাহিকের ঘরেও লিখতে পারেন। <b>Enter</b> চাপলে পরের ঘরে চলে যাবে।</span>
             </div>
+
             ${students.map((s, idx) => {
-              const rec = scores[s.sid] || { mark: "", isAbsent: false };
-              const raw = rec.isAbsent ? 0 : (parseFloat(bn2en(rec.mark)) || 0);
-              const percent = rec.isAbsent ? 0 : Math.round((raw / fullMarks) * 100 * 10) / 10;
-              const { grade } = rec.isAbsent ? { grade: "অনুপস্থিত" } : calculateGrade(percent, examConfig?.grading || []);
+              const rec = scores[s.sid] || { ca1: "", ca2: "", continuous: "", terminal: "", total: 0, pct: 0, grade: "-", absent: false };
 
               return html`<div key=${s.sid} style=${{
-                border: "1px solid var(--line)", borderRadius: "8px", padding: "10px",
-                background: rec.isAbsent ? "#fff8f8" : "var(--bg)"
+                border: "1px solid var(--line)", borderRadius: "8px", padding: "10px 12px",
+                background: rec.absent ? "#fff8f8" : "var(--bg)"
               }}>
                 <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <div>
@@ -404,35 +445,58 @@ export function MarksEntry({ profile }) {
                     <b>${s.name}</b>
                   </div>
                   <label style=${{ display: "flex", alignItems: "center", gap: "6px", margin: 0, fontSize: "0.85rem", cursor: "pointer" }}>
-                    <input type="checkbox" checked=${rec.isAbsent} disabled=${isLocked}
+                    <input type="checkbox" checked=${rec.absent} disabled=${isLocked}
                       onChange=${e => handleAbsentToggle(s.sid, e.target.checked)} style=${{ width: "auto" }} />
-                    <span style=${{ color: rec.isAbsent ? "var(--err)" : "var(--mute)", fontWeight: 600 }}>অনুপস্থিত</span>
+                    <span style=${{ color: rec.absent ? "var(--err)" : "var(--mute)", fontWeight: 600 }}>অনুপস্থিত</span>
                   </label>
                 </div>
 
-                <div style=${{ display: "flex", gap: "10px", alignItems: "center" }}>
-                  <div style=${{ flex: 2 }}>
-                    <label style=${{ margin: "0 0 2px", fontSize: "0.78rem", color: "var(--mute)" }}>
-                      প্রাপ্ত নম্বর (পূর্ণমান ${toBn(fullMarks)})
-                    </label>
-                    <input id=${`score_input_${idx}`} type="tel" inputMode="numeric" value=${rec.mark} disabled=${isLocked || rec.isAbsent}
-                      placeholder="যেমন: ${toBn(Math.min(18, fullMarks))}"
-                      onInput=${e => handleScoreChange(s.sid, e.target.value)}
-                      onKeyDown=${e => handleKeyDown(e, idx)}
+                <div style=${{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(70px, 1fr))", gap: "6px", alignItems: "flex-end" }}>
+                  <div>
+                    <label style=${{ margin: "0 0 2px", fontSize: "0.72rem", color: "var(--mute)" }}>ধারা ১ (২০)</label>
+                    <input id=${`input_ca1_${idx}`} type="tel" inputMode="numeric" value=${rec.ca1} disabled=${isLocked || rec.absent}
+                      placeholder="২০"
+                      onInput=${e => handleScoreChange(s.sid, "ca1", e.target.value)}
+                      onKeyDown=${e => handleKeyDown(e, idx, "ca1")}
                       onFocus=${e => e.target.select?.()}
-                      style=${{ padding: "9px 10px", textAlign: "center", background: "#fff", fontWeight: 700, fontSize: "1.05rem" }} />
+                      style=${{ padding: "7px 4px", textAlign: "center", background: "#fff", fontWeight: 600, fontSize: "0.95rem" }} />
                   </div>
 
-                  <div style=${{ flex: 1, textAlign: "center", background: "#fff", padding: "8px 6px", borderRadius: "8px", border: "1px solid var(--line)" }}>
-                    <div style=${{ fontSize: "0.75rem", color: "var(--mute)" }}>অর্জিত মান</div>
-                    <div style=${{ fontSize: "0.95rem", color: rec.isAbsent ? "var(--err)" : "var(--acc)", fontWeight: 700, marginTop: "2px" }}>
-                      ${grade}
+                  <div>
+                    <label style=${{ margin: "0 0 2px", fontSize: "0.72rem", color: "var(--mute)" }}>ধারা ২ (২০)</label>
+                    <input id=${`input_ca2_${idx}`} type="tel" inputMode="numeric" value=${rec.ca2} disabled=${isLocked || rec.absent}
+                      placeholder="২০"
+                      onInput=${e => handleScoreChange(s.sid, "ca2", e.target.value)}
+                      onKeyDown=${e => handleKeyDown(e, idx, "ca2")}
+                      onFocus=${e => e.target.select?.()}
+                      style=${{ padding: "7px 4px", textAlign: "center", background: "#fff", fontWeight: 600, fontSize: "0.95rem" }} />
+                  </div>
+
+                  <div>
+                    <label style=${{ margin: "0 0 2px", fontSize: "0.72rem", color: "var(--acc)", fontWeight: 600 }}>ধারা (${toBn(contFull)})</label>
+                    <input id=${`input_continuous_${idx}`} type="tel" inputMode="numeric" value=${rec.continuous} disabled=${isLocked || rec.absent}
+                      placeholder=${toBn(contFull)}
+                      onInput=${e => handleScoreChange(s.sid, "continuous", e.target.value)}
+                      onKeyDown=${e => handleKeyDown(e, idx, "continuous")}
+                      onFocus=${e => e.target.select?.()}
+                      style=${{ padding: "7px 4px", textAlign: "center", background: "#f0f7f3", fontWeight: 700, fontSize: "0.95rem", borderColor: "var(--acc)" }} />
+                  </div>
+
+                  <div>
+                    <label style=${{ margin: "0 0 2px", fontSize: "0.72rem", color: "var(--mute)" }}>সামষ্টিক (${toBn(termFull)})</label>
+                    <input id=${`input_terminal_${idx}`} type="tel" inputMode="numeric" value=${rec.terminal} disabled=${isLocked || rec.absent}
+                      placeholder=${toBn(termFull)}
+                      onInput=${e => handleScoreChange(s.sid, "terminal", e.target.value)}
+                      onKeyDown=${e => handleKeyDown(e, idx, "terminal")}
+                      onFocus=${e => e.target.select?.()}
+                      style=${{ padding: "7px 4px", textAlign: "center", background: "#fff", fontWeight: 700, fontSize: "0.95rem" }} />
+                  </div>
+
+                  <div style=${{ textAlign: "center", background: "#fff", padding: "6px 4px", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                    <div style=${{ fontSize: "0.72rem", color: "var(--mute)" }}>মোট: <b>${toBn(rec.total)}</b></div>
+                    <div style=${{ fontSize: "0.85rem", color: rec.absent ? "var(--err)" : "var(--acc)", fontWeight: 700 }}>
+                      ${rec.grade}
                     </div>
-                    ${!rec.isAbsent && rec.mark !== "" && html`
-                      <div style=${{ fontSize: "0.75rem", color: "var(--mute)", marginTop: "1px" }}>
-                        ${toBn(percent)}%
-                      </div>
-                    `}
                   </div>
                 </div>
               </div>`;
@@ -518,12 +582,12 @@ export function Verification({ profile }) {
           ${pending.map(m => html`<div class="card" key=${m.id}>
             <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <b style=${{ fontSize: "1.1rem" }}>${m.examName || "মূল্যায়ন"}</b>
+                <b style=${{ fontSize: "1.1rem" }}>${m.termName || "মূল্যায়ন"}</b>
                 <div style=${{ color: "var(--acc)", fontWeight: 600, marginTop: "2px" }}>
                   ${m.className} (${m.section}) • ${m.subject}
                 </div>
                 <div style=${{ fontSize: "0.85rem", color: "var(--mute)", marginTop: "2px" }}>
-                  শিক্ষক: ${m.updatedBy || "অজ্ঞাত"} • পূর্ণমান: ${toBn(m.fullMarks || 100)} • শিক্ষার্থী: ${toBn(Object.keys(m.records || {}).length)} জন
+                  শিক্ষক: ${m.updatedBy || "অজ্ঞাত"} • ধারাবাহিক: ${toBn(m.contFull)} + সামষ্টিক: ${toBn(m.termFull)} = ১০০
                 </div>
               </div>
               <span class="role" style=${{ background: "#fff3cd", color: "#856404" }}>জমা দেওয়া</span>
@@ -547,7 +611,7 @@ export function Verification({ profile }) {
     <div class="grid" style=${{ marginTop: 0 }}>
       ${approved.map(m => html`<div class="item" key=${m.id} style=${{ alignItems: "center" }}>
         <div>
-          <b>${m.examName || "মূল্যায়ন"} • ${m.className} (${m.section}) • ${m.subject}</b>
+          <b>${m.termName || "মূল্যায়ন"} • ${m.className} (${m.section}) • ${m.subject}</b>
           <div style=${{ fontSize: "0.85rem", color: "var(--acc)" }}>অনুমোদনকারী: ${m.approvedBy || "অ্যাডমিন"}</div>
         </div>
         <span class="role" style=${{ fontSize: "0.8rem", padding: "2px 8px" }}>অনুমোদিত</span>
