@@ -226,7 +226,7 @@ export function MarksEntry({ profile }) {
     } catch (ex) {
       console.error(ex);
       setSyncStatus("dirty");
-      setErr("সংরক্ষণ করা যায়নি। ইন্টারনেট ও Rules দেখুন।");
+      setErr("সংরক্ষণ করা যায়নি: " + (ex.code || ex.message || "ইন্টারনেট ও Rules দেখুন।"));
     }
     setBusy(false);
   }

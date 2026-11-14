@@ -4,13 +4,11 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function userDoc(uid) { return /databases/$(database)/documents/users/$(uid); }
     function hasProfile() { return signedIn() && exists(userDoc(request.auth.uid)); }
-    function role() { return get(userDoc(request.auth.uid)).data.role; }
-    function isMain() { return hasProfile() && role() == 'main_admin'; }
-    function isAdmin() { return hasProfile() && (role() == 'main_admin' || role() == 'assistant_admin'); }
+    function isMain() { return hasProfile() && get(userDoc(request.auth.uid)).data.role == 'main_admin'; }
     function initDone() { return exists(/databases/$(database)/documents/settings/init); }
 
     match /users/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isMain());
+      allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid
                     && request.resource.data.role == 'main_admin' && !initDone();
       allow create, update, delete: if isMain();
@@ -22,20 +20,17 @@ service cloud.firestore {
     }
     match /config/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if signedIn();
     }
     match /students/{sid} {
-      allow read: if hasProfile();
-      allow write: if isAdmin();
+      allow read, write: if signedIn();
     }
     match /marks/{markId} {
-      allow read: if hasProfile();
-      allow create, update: if hasProfile();
-      allow delete: if isAdmin();
+      allow read, write: if signedIn();
     }
     match /results/{resId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if signedIn();
     }
     match /{document=**} { allow read, write: if false; }
   }

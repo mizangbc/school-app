@@ -199,7 +199,7 @@ export function Exams() {
       setOkMsg("পরীক্ষার সেটিং সফলভাবে সংরক্ষণ করা হয়েছে।");
     } catch (ex) {
       console.error(ex);
-      setErr("সংরক্ষণ করা যায়নি। ইন্টারনেট ও Rules দেখুন।");
+      setErr("সংরক্ষণ করা যায়নি: " + (ex.code || ex.message || "ইন্টারনেট ও Rules দেখুন।"));
     }
     setBusy(false);
   }
