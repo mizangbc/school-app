@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, defaultExamConfig
-} from "./exams.js?v=15";
+} from "./exams.js?v=16";
 
 const html = htm.bind(React.createElement);
 
@@ -451,6 +451,7 @@ export function MarksEntry({ profile }) {
                   <div>
                     <span style=${{ fontWeight: 700, color: "var(--acc)", marginRight: "6px" }}>রোল ${toBn(s.roll)}</span>
                     <b>${s.name}</b>
+                    ${s.status === "pending" && html`<span style=${{ background: "#ffe082", color: "#856404", fontSize: "0.72rem", padding: "1px 6px", borderRadius: "8px", fontWeight: 700, marginLeft: "6px" }}>অনুমোদনের অপেক্ষায়</span>`}
                   </div>
                   <label style=${{ display: "flex", alignItems: "center", gap: "6px", margin: 0, fontSize: "0.85rem", cursor: "pointer" }}>
                     <input type="checkbox" checked=${rec.absent} disabled=${isLocked}

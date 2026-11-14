@@ -2,13 +2,13 @@ import React, { useState } from "https://esm.sh/react@18.3.1";
 import htm from "https://esm.sh/htm@3.1.1";
 import { auth } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { Structure } from "./structure.js?v=15";
-import { Students } from "./students.js?v=15";
-import { Teachers, MyAssignments } from "./teachers.js?v=15";
-import { Exams } from "./exams.js?v=15";
-import { MarksEntry, Verification } from "./marks.js?v=15";
-import { ResultsView } from "./results.js?v=15";
-import { BackupAndPromotion } from "./backup.js?v=15";
+import { Structure } from "./structure.js?v=16";
+import { Students } from "./students.js?v=16";
+import { Teachers, MyAssignments } from "./teachers.js?v=16";
+import { Exams } from "./exams.js?v=16";
+import { MarksEntry, Verification } from "./marks.js?v=16";
+import { ResultsView } from "./results.js?v=16";
+import { BackupAndPromotion } from "./backup.js?v=16";
 
 const html = htm.bind(React.createElement);
 
@@ -29,12 +29,14 @@ document.head.appendChild(st);
 
 const ROLES = { main_admin: "প্রধান অ্যাডমিন", assistant_admin: "সহকারী অ্যাডমিন", teacher: "শিক্ষক", verifier: "ফলাফল যাচাইকারী" };
 const MENU = {
-  main_admin: ["নম্বর এন্ট্রি", "ফলাফল ও প্রকাশ", "শিক্ষার্থী ও Excel আপলোড", "শ্রেণি, শাখা ও বিষয়", "পরীক্ষার সেটিং", "শিক্ষক ও বরাদ্দ", "যাচাই ও অনুমোদন", "শিক্ষাবর্ষ ও ব্যাকআপ"],
-  assistant_admin: ["নম্বর এন্ট্রি", "ফলাফল দেখা", "শিক্ষার্থী ও Excel আপলোড", "শ্রেণি, শাখা ও বিষয়"],
-  teacher: ["নম্বর এন্ট্রি", "ফলাফল দেখা", "আমার বরাদ্দ"],
+  main_admin: ["নম্বর এন্ট্রি", "ফলাফল ও প্রকাশ", "শিক্ষার্থী ব্যবস্থাপনা", "শ্রেণি, শাখা ও বিষয়", "পরীক্ষার সেটিং", "শিক্ষক ও বরাদ্দ", "যাচাই ও অনুমোদন", "শিক্ষাবর্ষ ও ব্যাকআপ"],
+  assistant_admin: ["নম্বর এন্ট্রি", "ফলাফল দেখা", "শিক্ষার্থী ব্যবস্থাপনা", "শ্রেণি, শাখা ও বিষয়"],
+  teacher: ["নম্বর এন্ট্রি", "শিক্ষার্থী ভর্তি ও তথ্য", "ফলাফল দেখা", "আমার বরাদ্দ"],
   verifier: ["নম্বর যাচাই ও অনুমোদন", "ফলাফল দেখা"]
 };
 const PAGES = {
+  "শিক্ষার্থী ব্যবস্থাপনা": Students,
+  "শিক্ষার্থী ভর্তি ও তথ্য": Students,
   "শিক্ষার্থী ও Excel আপলোড": Students,
   "শ্রেণি, শাখা ও বিষয়": Structure,
   "পরীক্ষার সেটিং": Exams,
