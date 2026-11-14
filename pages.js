@@ -4,6 +4,8 @@ import { auth } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { Structure } from "./structure.js";
 import { Students } from "./students.js";
+import { Teachers, MyAssignments } from "./teachers.js";
+import { Exams } from "./exams.js";
 
 const html = htm.bind(React.createElement);
 
@@ -31,7 +33,10 @@ const MENU = {
 };
 const PAGES = {
   "শিক্ষার্থী ও Excel আপলোড": Students,
-  "শ্রেণি, শাখা ও বিষয়": Structure
+  "শ্রেণি, শাখা ও বিষয়": Structure,
+  "পরীক্ষার সেটিং": Exams,
+  "শিক্ষক ও বরাদ্দ": Teachers,
+  "আমার বরাদ্দ": MyAssignments
 };
 
 export function Home({ profile }) {
