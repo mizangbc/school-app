@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, defaultExamConfig
-} from "./exams.js?v=14";
+} from "./exams.js?v=15";
 
 const html = htm.bind(React.createElement);
 
@@ -199,41 +199,49 @@ export function MarksEntry({ profile }) {
   }
 
   // কীবোর্ডে Enter বা অ্যারো কী চেপে দ্রুত পরের শিক্ষার্থীর ঘরে যাওয়া
+  // কী-বোর্ড কুইক এন্ট্রি (Enter বা ArrowDown দিলে নিচে পরবর্তী শিক্ষার্থীর একই ঘরে যাবে)
   function handleKeyDown(e, idx, field) {
     if (e.key === "Enter" || e.key === "ArrowDown") {
       e.preventDefault();
-      let targetField = field;
-      let targetIdx = idx;
-
-      if (field === "ca1") {
-        targetField = "ca2";
-      } else if (field === "ca2") {
-        targetField = "terminal";
-      } else if (field === "continuous") {
-        targetField = "terminal";
-      } else if (field === "terminal") {
-        targetIdx = idx + 1;
-        // যদি ca1 থাকে তবে ca1 এ, নতুবা continuous এ
-        const prevHadCa = scores[students[idx]?.sid]?.ca1 !== "";
-        targetField = prevHadCa ? "ca1" : "continuous";
-      }
-
-      for (let i = targetIdx; i < students.length; i++) {
-        const el = document.getElementById(`input_${targetField}_${i}`);
+      const targetIdx = idx + 1;
+      if (targetIdx < students.length) {
+        const el = document.getElementById(`input_${field}_${targetIdx}`);
         if (el && !el.disabled) {
           el.focus();
           el.select?.();
           return;
         }
+      } else {
+        const saveBtn = document.getElementById("btn_save_draft");
+        if (saveBtn) saveBtn.focus();
       }
-
-      const saveBtn = document.getElementById("btn_save_draft");
-      if (saveBtn) saveBtn.focus();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       if (idx > 0) {
         const el = document.getElementById(`input_${field}_${idx - 1}`);
         if (el && !el.disabled) {
+          el.focus();
+          el.select?.();
+        }
+      }
+    } else if (e.key === "ArrowRight") {
+      const fields = ["ca1", "ca2", "continuous", "terminal"];
+      const fIdx = fields.indexOf(field);
+      if (fIdx !== -1 && fIdx < fields.length - 1) {
+        const el = document.getElementById(`input_${fields[fIdx + 1]}_${idx}`);
+        if (el && !el.disabled) {
+          e.preventDefault();
+          el.focus();
+          el.select?.();
+        }
+      }
+    } else if (e.key === "ArrowLeft") {
+      const fields = ["ca1", "ca2", "continuous", "terminal"];
+      const fIdx = fields.indexOf(field);
+      if (fIdx > 0) {
+        const el = document.getElementById(`input_${fields[fIdx - 1]}_${idx}`);
+        if (el && !el.disabled) {
+          e.preventDefault();
           el.focus();
           el.select?.();
         }

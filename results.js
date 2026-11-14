@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_ANNUAL_WEIGHTS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, LETTER_GRADES
-} from "./exams.js?v=14";
+} from "./exams.js?v=15";
 
 const html = htm.bind(React.createElement);
 
@@ -253,7 +253,7 @@ function SubjectRegisterView({ students, marksDocs, curClass, section, subject, 
 }
 
 // ২. শ্রেণিভিত্তিক সামগ্রিক ফলাফল শিট (সকল বিষয় একত্রিত ট্যাবুলেশন শিট)
-function ConsolidatedTabulationView({ students, marksDocs, curClass, section, subjects, examConfig, termOption, onSelectStudent }) {
+function ConsolidatedTabulationView({ students, marksDocs, curClass, section, subjects, examConfig, termOption, onSelectStudent, onBatchPrint }) {
   const grading = examConfig?.grading || DESCRIPTIVE_GRADES;
   const weights = examConfig?.annualWeights || DEFAULT_ANNUAL_WEIGHTS;
   const showGpa = examConfig?.displayOptions?.showGpa ?? false;
@@ -349,6 +349,57 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
 
   studentResults.sort((a, b) => a.roll - b.roll);
 
+  // শাখার সব ছাত্রের ফলাফল এক্সেলে (CSV) ডাউনলোড
+  function exportSectionCsv() {
+    const titleRow1 = `"এস. এম. মডেল সরকারি প্রাথমিক বিদ্যালয়, গোপালগঞ্জ সদর"`;
+    const titleRow2 = `"শ্রেণি: ${curClass?.name || ""}, শাখা: ${section}, শিক্ষাবর্ষ: ২০২৬, মূল্যায়ন: ${termOption === "annual" ? "বার্ষিক সমন্বিত ফলাফল" : DEFAULT_TERMS.find(t => t.id === termOption)?.name}"`;
+
+    const subHeaders = [];
+    subjects.forEach(sub => {
+      subHeaders.push(`"${sub} (নম্বর)"`, `"${sub} (গ্রেড)"`);
+    });
+
+    const headerRow = [
+      "রোল নং", "শিক্ষার্থীর নাম", "আইডি (SID)",
+      ...subHeaders,
+      "সর্বমোট নম্বর", "গড় শতাংশ (%)", "সমন্বিত গ্রেড",
+      ...(showGpa ? ["জিপিএ"] : []),
+      "মেধা স্থান", "ফলাফল"
+    ].join(",");
+
+    const dataRows = studentResults.map(r => {
+      const subData = [];
+      subjects.forEach(sub => {
+        const s = r.subjects[sub];
+        subData.push(s?.absent ? "অনুপস্থিত" : (s?.score ?? 0));
+        subData.push(`"${s?.grade || "-"}"`);
+      });
+      return [
+        r.roll,
+        `"${r.name}"`,
+        r.sid,
+        ...subData,
+        r.totalScore,
+        r.avgPct,
+        `"${r.grade}"`,
+        ...(showGpa ? [r.gpa.toFixed(2)] : []),
+        `"${r.rankBn || "-"}"`,
+        `"${r.pass ? "উত্তীর্ণ" : "অগ্রগতি প্রয়োজন"}"`
+      ].join(",");
+    });
+
+    const csvContent = "\uFEFF" + [titleRow1, titleRow2, "", headerRow, ...dataRows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tabulation_${curClass?.name || "class"}_${section}_2026.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return html`<div class="card print-area" style=${{ padding: "12px 8px" }}>
     <div style=${{ textAlign: "center", marginBottom: "14px", paddingBottom: "8px", borderBottom: "2px solid var(--acc)" }}>
       <div style=${{ fontSize: "1.25rem", fontWeight: 800, color: "var(--acc)" }}>এস. এম. মডেল সরকারি প্রাথমিক বিদ্যালয়</div>
@@ -359,6 +410,22 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
       <div style=${{ fontSize: "0.88rem", marginTop: "2px" }}>
         শ্রেণি: <b>${curClass?.name || ""}</b> | শাখা: <b>${section}</b> | মূল্যায়ন: <b>${termOption === "annual" ? "বার্ষিক সমন্বিত ফলাফল" : DEFAULT_TERMS.find(t => t.id === termOption)?.name}</b>
       </div>
+    </div>
+
+    <!-- অ্যাকশন বাটনসমূহ (এক্সেলে ডাউনলোড ও পিডিএফ প্রিন্ট) -->
+    <div class="no-print" style=${{ display: "flex", gap: "8px", justifyContent: "flex-end", marginBottom: "12px", flexWrap: "wrap" }}>
+      <button type="button" class="ghost" onClick=${exportSectionCsv}
+        style=${{ width: "auto", margin: 0, padding: "7px 14px", fontSize: "0.85rem", fontWeight: 600 }}>
+        📥 এক্সেলে ডাউনলোড (CSV)
+      </button>
+      <button type="button" class="ghost" onClick=${() => window.print()}
+        style=${{ width: "auto", margin: 0, padding: "7px 14px", fontSize: "0.85rem", fontWeight: 600 }}>
+        🖨️ ট্যাবুলেশন শিট প্রিন্ট
+      </button>
+      ${onBatchPrint && html`<button type="button" onClick=${onBatchPrint}
+        style=${{ width: "auto", margin: 0, padding: "7px 16px", fontSize: "0.85rem", fontWeight: 700, background: "var(--acc)", color: "#fff" }}>
+        🖨️ শাখার সকল অগ্রগতি পত্র প্রিন্ট (Landscape PDF)
+      </button>`}
     </div>
 
     <div style=${{ overflowX: "auto" }}>
@@ -433,172 +500,350 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
   </div>`;
 }
 
-// ৩. ব্যক্তিগত মার্কশিট উপাদান (রিপোর্ট কার্ড)
-export function MarksheetCard({ student, evalName, className, section, examConfig, onClose }) {
-  const showGpa = examConfig?.displayOptions?.showGpa ?? false;
-  const showMarks = examConfig?.displayOptions?.showMarks ?? true;
-  const subjects = Object.keys(student.subjects || {});
+// ৩. অফিসিয়াল ল্যান্ডস্কেপ অগ্রগতি প্রতিবেদন ও নম্বরপত্র (ব্যবহারকারীর সংযুক্ত ছবির হুবহু সরকারি প্রাথমিক ছক)
+export function OfficialLandscapeMarksheet({
+  student,
+  curClass,
+  section,
+  className,
+  marksDocs = [],
+  examConfig,
+  allSubjectAverages = {},
+  onClose,
+  isBatch = false
+}) {
+  const grading = examConfig?.grading || DESCRIPTIVE_GRADES;
+  const weights = examConfig?.annualWeights || DEFAULT_ANNUAL_WEIGHTS;
+  const w1 = ((weights.find(w => w.phase === 1)?.weight ?? 25) / 100);
+  const w2 = ((weights.find(w => w.phase === 2)?.weight ?? 25) / 100);
+  const w3 = ((weights.find(w => w.phase === 3)?.weight ?? 50) / 100);
 
-  return html`<div class="marksheet-box" style=${{
+  const subjects = curClass?.subjects || Object.keys(student.subjects || {});
+
+  const mDocsMap = {};
+  (marksDocs || []).forEach(d => {
+    mDocsMap[`${d.termId}_${d.subject}`] = d;
+  });
+
+  const firstDoc = marksDocs?.[0];
+  const contFull = firstDoc?.contFull || 30;
+  const termFull = firstDoc?.termFull || 70;
+  const totalFull = contFull + termFull;
+
+  let grandT1 = 0, grandT2 = 0, grandT3 = 0, grandAnnual = 0;
+  const totalPossible = subjects.length * 100;
+
+  const rows = subjects.map(sub => {
+    const d1 = mDocsMap[`term_1_${sub}`];
+    const d2 = mDocsMap[`term_2_${sub}`];
+    const d3 = mDocsMap[`term_3_${sub}`];
+
+    const r1 = d1?.records?.[student.sid];
+    const r2 = d2?.records?.[student.sid];
+    const r3 = d3?.records?.[student.sid];
+
+    const t1_cont = r1 ? (r1.absent ? "অনুপস্থিত" : (r1.continuous !== "" ? toBn(r1.continuous) : "-")) : "-";
+    const t1_term = r1 ? (r1.absent ? "অনুপস্থিত" : (r1.terminal !== "" ? toBn(r1.terminal) : "-")) : "-";
+    const t1_tot = r1 ? (r1.absent ? "অনুপস্থিত" : (r1.total !== "" ? toBn(r1.total) : "-")) : "-";
+
+    const t2_cont = r2 ? (r2.absent ? "অনুপস্থিত" : (r2.continuous !== "" ? toBn(r2.continuous) : "-")) : "-";
+    const t2_term = r2 ? (r2.absent ? "অনুপস্থিত" : (r2.terminal !== "" ? toBn(r2.terminal) : "-")) : "-";
+    const t2_tot = r2 ? (r2.absent ? "অনুপস্থিত" : (r2.total !== "" ? toBn(r2.total) : "-")) : "-";
+
+    const t3_cont = r3 ? (r3.absent ? "অনুপস্থিত" : (r3.continuous !== "" ? toBn(r3.continuous) : "-")) : "-";
+    const t3_term = r3 ? (r3.absent ? "অনুপস্থিত" : (r3.terminal !== "" ? toBn(r3.terminal) : "-")) : "-";
+    const t3_tot = r3 ? (r3.absent ? "অনুপস্থিত" : (r3.total !== "" ? toBn(r3.total) : "-")) : "-";
+
+    const s1 = r1 && !r1.absent ? (parseFloat(r1.total) || 0) : 0;
+    const s2 = r2 && !r2.absent ? (parseFloat(r2.total) || 0) : 0;
+    const s3 = r3 && !r3.absent ? (parseFloat(r3.total) || 0) : 0;
+
+    grandT1 += s1;
+    grandT2 += s2;
+    grandT3 += s3;
+
+    let annualAvg = Math.round(((s1 * w1) + (s2 * w2) + (s3 * w3)) * 10) / 10;
+    if (student.subjects?.[sub]?.score != null && (!r1 && !r2 && !r3)) {
+      annualAvg = student.subjects[sub].score;
+    }
+    grandAnnual += annualAvg;
+
+    const isAnyAbsent = (r1 && r1.absent) || (r2 && r2.absent) || (r3 && r3.absent);
+    const subGradeInfo = getGradeInfo(annualAvg, grading);
+    const subjectGrade = (isAnyAbsent && annualAvg === 0) ? "অগ্রগতি প্রয়োজন" : subGradeInfo.grade;
+
+    return {
+      sub,
+      t1_cont, t1_term, t1_tot,
+      t2_cont, t2_term, t2_tot,
+      t3_cont, t3_term, t3_tot,
+      annualAvg: toBn(annualAvg),
+      subjectGrade
+    };
+  });
+
+  const stuOverall = allSubjectAverages?.[student.sid] || {
+    grade: student.grade || "-",
+    avgPct: student.avgPct || 0,
+    total: student.totalScore || grandAnnual,
+    rankBn: student.rankBn || "-"
+  };
+
+  const finalClassName = className || curClass?.name || "";
+
+  return html`<div class="marksheet-box landscape-card" style=${{
     background: "#fff",
-    border: "2px solid #1f7a5a",
-    borderRadius: "12px",
-    padding: "20px 24px",
-    marginTop: "14px",
-    position: "relative",
-    color: "#222",
-    boxShadow: "0 4px 14px rgba(0,0,0,0.08)"
+    border: "2px solid #222",
+    borderRadius: "6px",
+    padding: "16px 20px",
+    marginTop: isBatch ? "0" : "14px",
+    marginBottom: isBatch ? "20px" : "14px",
+    color: "#111",
+    boxShadow: isBatch ? "none" : "0 4px 14px rgba(0,0,0,0.08)"
   }}>
-    <div class="no-print" style=${{ display: "flex", justifyContent: "space-between", marginBottom: "14px", gap: "10px", flexWrap: "wrap" }}>
+    ${!isBatch && html`<div class="no-print" style=${{ display: "flex", justifyContent: "space-between", marginBottom: "12px", gap: "10px", flexWrap: "wrap" }}>
       ${onClose && html`<button type="button" class="ghost" onClick=${onClose} style=${{ width: "auto", margin: 0, padding: "6px 14px" }}>
         ← তালিকায় ফিরুন
       </button>`}
       <button type="button" onClick=${() => window.print()} style=${{ width: "auto", margin: 0, padding: "6px 18px", background: "var(--acc)", color: "#fff", fontWeight: 600 }}>
-        🖨️ মার্কশিট প্রিন্ট / ডাউনলোড
+        🖨️ এই অগ্রগতি পত্র প্রিন্ট (Landscape PDF)
       </button>
-    </div>
+    </div>`}
 
-    <div style=${{ textAlign: "center", borderBottom: "2px solid #1f7a5a", paddingBottom: "12px", marginBottom: "16px" }}>
-      <div style=${{ fontSize: "0.95rem", color: "#555", fontWeight: 600 }}>গণপ্রজাতন্ত্রী বাংলাদেশ সরকার</div>
-      <div style=${{ fontSize: "1.45rem", fontWeight: 800, color: "#1f7a5a", margin: "2px 0" }}>
+    <!-- হেডার -->
+    <div style=${{ textAlign: "center", borderBottom: "1.5px solid #222", paddingBottom: "8px", marginBottom: "10px" }}>
+      <div style=${{ fontSize: "0.88rem", color: "#444", fontWeight: 600 }}>গণপ্রজাতন্ত্রী বাংলাদেশ সরকার</div>
+      <div style=${{ fontSize: "1.35rem", fontWeight: 800, color: "#1f7a5a", margin: "1px 0" }}>
         এস. এম. মডেল সরকারি প্রাথমিক বিদ্যালয়
       </div>
-      <div style=${{ fontSize: "0.9rem", color: "#666" }}>গোপালগঞ্জ সদর, গোপালগঞ্জ | স্থাপিত: ১৯২৯ খ্রি.</div>
+      <div style=${{ fontSize: "0.82rem", color: "#555" }}>গোপালগঞ্জ সদর, গোপালগঞ্জ | স্থাপিত: ১৯২৯ খ্রি.</div>
       <div style=${{
         display: "inline-block",
-        marginTop: "8px",
-        padding: "4px 16px",
+        marginTop: "4px",
+        padding: "2px 14px",
         background: "#e8f5e9",
         color: "#1f7a5a",
-        borderRadius: "20px",
+        borderRadius: "14px",
         fontWeight: 700,
-        fontSize: "1rem"
+        fontSize: "0.92rem",
+        border: "1px solid #c8e6c9"
       }}>
-        শিক্ষার্থীর মূল্যায়ন প্রতিবেদন ও নম্বরপত্র — ২০২৬
+        শিক্ষার্থীর প্রাথমিক মূল্যায়ন ও অগ্রগতি প্রতিবেদন (নম্বরপত্র) — ২০২৬
       </div>
     </div>
 
+    <!-- শিক্ষার্থীর পরিচিতি -->
     <div style=${{
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-      gap: "8px",
+      display: "flex",
+      justifyContent: "space-between",
       background: "#f8fbf9",
-      padding: "12px 14px",
-      borderRadius: "8px",
-      marginBottom: "16px",
-      border: "1px solid #e0ede6",
-      fontSize: "0.92rem"
+      padding: "6px 12px",
+      borderRadius: "4px",
+      marginBottom: "10px",
+      border: "1px solid #dce8e1",
+      fontSize: "0.86rem",
+      flexWrap: "wrap",
+      gap: "6px"
     }}>
       <div><b>শিক্ষার্থীর নাম:</b> ${student.name}</div>
       <div><b>রোল নম্বর:</b> ${toBn(student.roll)}</div>
-      <div><b>শ্রেণি:</b> ${className}</div>
-      <div><b>শাখা:</b> ${section}</div>
+      <div><b>শ্রেণি:</b> ${finalClassName}</div>
+      <div><b> শাখা:</b> ${section}</div>
       <div><b>আইডি (SID):</b> ${student.sid}</div>
-      <div><b>মূল্যায়ন:</b> ${evalName}</div>
     </div>
 
-    <div style=${{ overflowX: "auto" }}>
-      <table style=${{ width: "100%", borderCollapse: "collapse", minWidth: "480px", marginBottom: "16px" }}>
+    <!-- শীর্ষ একাডেমিক ছক (১৩ কলাম) -->
+    <div style=${{ overflowX: "auto", marginBottom: "8px" }}>
+      <table style=${{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem", border: "1.5px solid #222", textAlign: "center" }}>
         <thead>
-          <tr style=${{ background: "#e8f5e9", borderBottom: "2px solid #1f7a5a", textAlign: "left" }}>
-            <th style=${{ padding: "8px 10px", fontSize: "0.9rem" }}>বিষয়</th>
-            <th style=${{ padding: "8px 10px", fontSize: "0.9rem", textAlign: "center" }}>পূর্ণমান</th>
-            ${showMarks && html`<th style=${{ padding: "8px 10px", fontSize: "0.9rem", textAlign: "center" }}>প্রাপ্ত নম্বর</th>`}
-            <th style=${{ padding: "8px 10px", fontSize: "0.9rem", textAlign: "center" }}>শতকরা (%)</th>
-            <th style=${{ padding: "8px 10px", fontSize: "0.9rem", textAlign: "center" }}>অর্জিত মান / গ্রেড</th>
-            ${showGpa && html`<th style=${{ padding: "8px 10px", fontSize: "0.9rem", textAlign: "center" }}>জিপিএ</th>`}
+          <tr style=${{ background: "#f0f7f3", borderBottom: "1.5px solid #222" }}>
+            <th rowSpan="2" style=${{ border: "1px solid #333", padding: "4px", textAlign: "left", width: "19%", fontSize: "0.8rem" }}>বিষয় (পূর্ণমান)</th>
+            <th colSpan="3" style=${{ border: "1px solid #333", padding: "4px" }}>১ম প্রান্তিক</th>
+            <th colSpan="3" style=${{ border: "1px solid #333", padding: "4px" }}>২য় প্রান্তিক</th>
+            <th colSpan="3" style=${{ border: "1px solid #333", padding: "4px" }}>৩য় প্রান্তিক</th>
+            <th colSpan="3" style=${{ border: "1px solid #333", padding: "4px" }}>চূড়ান্ত ফলাফল</th>
+          </tr>
+          <tr style=${{ background: "#f7faf8", borderBottom: "1.5px solid #222", fontSize: "0.71rem" }}>
+            <th style=${{ border: "1px solid #333", padding: "3px" }}>ধারা (${toBn(contFull)})</th>
+            <th style=${{ border: "1px solid #333", padding: "3px" }}>সামষ্টিক (${toBn(termFull)})</th>
+            <th style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700 }}>মোট (${toBn(totalFull)})</th>
+
+            <th style=${{ border: "1px solid #333", padding: "3px" }}>ধারা (${toBn(contFull)})</th>
+            <th style=${{ border: "1px solid #333", padding: "3px" }}>সামষ্টিক (${toBn(termFull)})</th>
+            <th style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700 }}>মোট (${toBn(totalFull)})</th>
+
+            <th style=${{ border: "1px solid #333", padding: "3px" }}>ধারা (${toBn(contFull)})</th>
+            <th style=${{ border: "1px solid #333", padding: "3px" }}>সামষ্টিক (${toBn(termFull)})</th>
+            <th style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700 }}>মোট (${toBn(totalFull)})</th>
+
+            <th style=${{ border: "1px solid #333", padding: "3px" }}>প্রান্তিকের গড়</th>
+            <th style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700 }}>বিষয় গ্রেড</th>
+            <th style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700 }}>সমন্বিত গ্রেড</th>
           </tr>
         </thead>
         <tbody>
-          ${subjects.map((sub, i) => {
-            const s = student.subjects[sub] || {};
-            return html`<tr key=${sub} style=${{ borderBottom: "1px solid #eee", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-              <td style=${{ padding: "8px 10px", fontWeight: 600 }}>${sub}</td>
-              <td style=${{ padding: "8px 10px", textAlign: "center" }}>১০০</td>
-              ${showMarks && html`<td style=${{ padding: "8px 10px", textAlign: "center", fontWeight: 700 }}>
-                ${s.absent ? html`<span style=${{ color: "var(--err)" }}>অনুপস্থিত</span>` : toBn(s.score)}
-              </td>`}
-              <td style=${{ padding: "8px 10px", textAlign: "center" }}>${s.absent ? "-" : `${toBn(s.score)}%`}</td>
-              <td style=${{ padding: "8px 10px", textAlign: "center", fontWeight: 700, color: s.grade === "অগ্রগতি প্রয়োজন" ? "var(--err)" : "#1f7a5a" }}>
-                ${s.grade}
-              </td>
-              ${showGpa && html`<td style=${{ padding: "8px 10px", textAlign: "center" }}>
-                ${s.absent ? "0.00" : toBn(s.gpa.toFixed(2))}
-              </td>`}
-            </tr>`;
-          })}
+          ${rows.map((r, i) => html`<tr key=${r.sub} style=${{ borderBottom: "1px solid #333", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+            <td style=${{ border: "1px solid #333", padding: "4px 6px", textAlign: "left", fontWeight: 600 }}>${r.sub}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px" }}>${r.t1_cont}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px" }}>${r.t1_term}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700 }}>${r.t1_tot}</td>
+
+            <td style=${{ border: "1px solid #333", padding: "3px" }}>${r.t2_cont}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px" }}>${r.t2_term}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700 }}>${r.t2_tot}</td>
+
+            <td style=${{ border: "1px solid #333", padding: "3px" }}>${r.t3_cont}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px" }}>${r.t3_term}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700 }}>${r.t3_tot}</td>
+
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700 }}>${r.annualAvg}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 700, color: r.subjectGrade === "অগ্রগতি প্রয়োজন" ? "var(--err)" : "#1f7a5a" }}>${r.subjectGrade}</td>
+            ${i === 0 ? html`<td rowSpan=${rows.length} style=${{
+              border: "1px solid #333",
+              verticalAlign: "middle",
+              textAlign: "center",
+              fontWeight: 800,
+              fontSize: "1.05rem",
+              color: stuOverall.grade === "অগ্রগতি প্রয়োজন" ? "var(--err)" : "#1f7a5a",
+              background: "#fff"
+            }}>
+              ${stuOverall.grade}
+            </td>` : null}
+          </tr>`)}
         </tbody>
         <tfoot>
-          <tr style=${{ background: "#f0f7f3", borderTop: "2px solid #1f7a5a", fontWeight: 700 }}>
-            <td style=${{ padding: "10px" }}>সর্বমোট / গড়</td>
-            <td style=${{ padding: "10px", textAlign: "center" }}>${toBn(student.totalFull)}</td>
-            ${showMarks && html`<td style=${{ padding: "10px", textAlign: "center", color: "#1f7a5a" }}>${toBn(student.totalScore)}</td>`}
-            <td style=${{ padding: "10px", textAlign: "center" }}>${toBn(student.avgPct)}%</td>
-            <td style=${{ padding: "10px", textAlign: "center", color: student.grade === "অগ্রগতি প্রয়োজন" ? "var(--err)" : "#1f7a5a" }}>
-              ${student.grade}
-            </td>
-            ${showGpa && html`<td style=${{ padding: "10px", textAlign: "center" }}>
-              ${toBn(student.gpa.toFixed(2))}
-            </td>`}
+          <tr style=${{ borderTop: "1.5px solid #222", background: "#f0f7f3", fontWeight: 700, fontSize: "0.76rem" }}>
+            <td style=${{ border: "1px solid #333", padding: "4px 6px", textAlign: "left" }}>সর্বমোট (${toBn(totalPossible)})</td>
+            <td colSpan="2" style=${{ border: "1px solid #333", padding: "3px" }}>১ম প্রান্তিকে মোট:</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800 }}>${toBn(grandT1)}</td>
+
+            <td colSpan="2" style=${{ border: "1px solid #333", padding: "3px" }}>২য় প্রান্তিকে মোট:</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800 }}>${toBn(grandT2)}</td>
+
+            <td colSpan="2" style=${{ border: "1px solid #333", padding: "3px" }}>৩য় প্রান্তিকে মোট:</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800 }}>${toBn(grandT3)}</td>
+
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800 }}>${toBn(grandAnnual)}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px" }}>-</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800, color: "#1f7a5a" }}>মেধা: ${stuOverall.rankBn || student.rankBn || "-"}</td>
           </tr>
         </tfoot>
       </table>
     </div>
 
-    <div style=${{
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-      gap: "10px",
-      background: student.pass ? "#f1f8e9" : "#ffebee",
-      padding: "14px 16px",
-      borderRadius: "8px",
-      border: `1px solid ${student.pass ? "#c8e6c9" : "#ffcdd2"}`,
-      marginBottom: "36px",
-      textAlign: "center"
-    }}>
-      <div>
-        <div style=${{ fontSize: "0.85rem", color: "#666" }}>ফলাফল</div>
-        <b style=${{ fontSize: "1.1rem", color: student.pass ? "#2e7d32" : "#c62828" }}>${student.pass ? "উত্তীর্ণ" : "অকৃতকার্য"}</b>
+    <!-- নিচের দুটি টেবিল পাশাপাশি (ব্যক্তিগত গুণাবলী ও শিখন অর্জন) -->
+    <div style=${{ display: "flex", gap: "10px", marginTop: "8px", alignItems: "stretch" }}>
+      <!-- বাম কলাম: ব্যক্তিগত ও সামাজিক গুণাবলী -->
+      <div style=${{ flex: 3, border: "1.5px solid #222", borderRadius: "2px" }}>
+        <table style=${{ width: "100%", borderCollapse: "collapse", fontSize: "0.74rem" }}>
+          <thead>
+            <tr style=${{ background: "#f0f7f3", borderBottom: "1px solid #333" }}>
+              <th colSpan="2" style=${{ padding: "4px 6px", textAlign: "left", fontWeight: 700 }}>ব্যক্তিগত ও সামাজিক গুণাবলী</th>
+              <th colSpan="3" style=${{ padding: "4px 6px", textAlign: "right", fontSize: "0.7rem", fontWeight: 600 }}>অবস্থান: উত্তম (ক) | সন্তোষজনক (খ) | উন্নতি প্রয়োজন (গ)</th>
+            </tr>
+            <tr style=${{ background: "#fafafa", borderBottom: "1px solid #333", textAlign: "center", fontSize: "0.71rem" }}>
+              <th style=${{ padding: "3px 4px", width: "18%", borderRight: "1px solid #333" }}>গুণাবলী</th>
+              <th style=${{ padding: "3px 6px", width: "58%", borderRight: "1px solid #333" }}>বর্ণনা</th>
+              <th style=${{ padding: "3px", width: "8%", borderRight: "1px solid #333" }}>১ম</th>
+              <th style=${{ padding: "3px", width: "8%", borderRight: "1px solid #333" }}>২য়</th>
+              <th style=${{ padding: "3px", width: "8%" }}>৩য়</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style=${{ borderBottom: "1px solid #333" }}>
+              <td style=${{ padding: "4px 6px", fontWeight: 600, borderRight: "1px solid #333", textAlign: "center" }}>সক্রিয়তা</td>
+              <td style=${{ padding: "4px 6px", fontSize: "0.7rem", lineHeight: 1.25, borderRight: "1px solid #333" }}>
+                শিক্ষকের নির্দেশনামতো পাঠ্যপুস্তকের কাজ/ওয়ার্কশিট সম্পন্ন করা; বাড়ির কাজ সময়মতো সম্পন্ন করা; জোড়ায়/দলগত কাজে কার্যকরভাবে অংশগ্রহণ করা; প্রশ্নোত্তর পর্বে অংশ নেওয়া ইত্যাদি
+              </td>
+              <td style=${{ padding: "4px", textAlign: "center", fontWeight: 700, borderRight: "1px solid #333" }}>ক</td>
+              <td style=${{ padding: "4px", textAlign: "center", fontWeight: 700, borderRight: "1px solid #333" }}>ক</td>
+              <td style=${{ padding: "4px", textAlign: "center", fontWeight: 700 }}>ক</td>
+            </tr>
+            <tr style=${{ borderBottom: "1px solid #333" }}>
+              <td style=${{ padding: "4px 6px", fontWeight: 600, borderRight: "1px solid #333", textAlign: "center" }}>শৃঙ্খলা</td>
+              <td style=${{ padding: "4px 6px", fontSize: "0.7rem", lineHeight: 1.25, borderRight: "1px solid #333" }}>
+                বিদ্যালয়ে নিয়মিত উপস্থিত থাকা; বিদ্যালয়ের সকল নিয়ম-শৃঙ্খলা মেনে চলা; পরিষ্কার-পরিচ্ছন্ন থাকা ইত্যাদি
+              </td>
+              <td style=${{ padding: "4px", textAlign: "center", fontWeight: 700, borderRight: "1px solid #333" }}>ক</td>
+              <td style=${{ padding: "4px", textAlign: "center", fontWeight: 700, borderRight: "1px solid #333" }}>ক</td>
+              <td style=${{ padding: "4px", textAlign: "center", fontWeight: 700 }}>ক</td>
+            </tr>
+            <tr>
+              <td style=${{ padding: "4px 6px", fontWeight: 600, borderRight: "1px solid #333", textAlign: "center" }}>আচরণ</td>
+              <td style=${{ padding: "4px 6px", fontSize: "0.7rem", lineHeight: 1.25, borderRight: "1px solid #333" }}>
+                শিক্ষক/বড়দের সম্মান করা; ছোটদের স্নেহ করা; অন্যের প্রতি সহানুভূতিশীল হওয়া; সহযোগিতা করা; ভুল হলে স্বীকার করা; অন্যকে কষ্ট না দেওয়া; মিলেমিশে থাকা ইত্যাদি
+              </td>
+              <td style=${{ padding: "4px", textAlign: "center", fontWeight: 700, borderRight: "1px solid #333" }}>ক</td>
+              <td style=${{ padding: "4px", textAlign: "center", fontWeight: 700, borderRight: "1px solid #333" }}>ক</td>
+              <td style=${{ padding: "4px", textAlign: "center", fontWeight: 700 }}>ক</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <div>
-        <div style=${{ fontSize: "0.85rem", color: "#666" }}>শাখা মেধা স্থান</div>
-        <b style=${{ fontSize: "1.1rem", color: "#1f7a5a" }}>${student.rankBn || "-"}</b>
+
+      <!-- ডান কলাম: শিখন অর্জন ও গ্রেডিং স্কেল -->
+      <div style=${{ flex: 2, border: "1.5px solid #222", borderRadius: "2px" }}>
+        <table style=${{ width: "100%", height: "100%", borderCollapse: "collapse", fontSize: "0.74rem", textAlign: "center" }}>
+          <thead>
+            <tr style=${{ background: "#f0f7f3", borderBottom: "1px solid #333" }}>
+              <th style=${{ padding: "4px 6px", borderRight: "1px solid #333", width: "35%" }}>প্রাপ্ত নম্বর</th>
+              <th style=${{ padding: "4px 6px", borderRight: "1px solid #333", width: "22%" }}>গ্রেড</th>
+              <th style=${{ padding: "4px 6px", width: "43%" }}>শিখন অর্জন</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style=${{ borderBottom: "1px solid #333" }}>
+              <td style=${{ padding: "4px", borderRight: "1px solid #333" }}>৮০%-১০০%</td>
+              <td style=${{ padding: "4px", fontWeight: 700, borderRight: "1px solid #333" }}>A</td>
+              <td style=${{ padding: "4px", fontWeight: 700, color: "#1f7a5a" }}>অতি উত্তম</td>
+            </tr>
+            <tr style=${{ borderBottom: "1px solid #333" }}>
+              <td style=${{ padding: "4px", borderRight: "1px solid #333" }}>৬০%-৭৯%</td>
+              <td style=${{ padding: "4px", fontWeight: 700, borderRight: "1px solid #333" }}>B</td>
+              <td style=${{ padding: "4px", fontWeight: 700, color: "#1f7a5a" }}>উত্তম</td>
+            </tr>
+            <tr style=${{ borderBottom: "1px solid #333" }}>
+              <td style=${{ padding: "4px", borderRight: "1px solid #333" }}>৪০%-৫৯%</td>
+              <td style=${{ padding: "4px", fontWeight: 700, borderRight: "1px solid #333" }}>C</td>
+              <td style=${{ padding: "4px", fontWeight: 700 }}>সন্তোষজনক</td>
+            </tr>
+            <tr>
+              <td style=${{ padding: "4px", borderRight: "1px solid #333" }}>৪০% এর কম</td>
+              <td style=${{ padding: "4px", fontWeight: 700, borderRight: "1px solid #333" }}>D</td>
+              <td style=${{ padding: "4px", fontWeight: 700, color: "#c62828" }}>সহায়তা প্রয়োজন</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <div>
-        <div style=${{ fontSize: "0.85rem", color: "#666" }}>সমন্বিত অর্জিত মান</div>
-        <b style=${{ fontSize: "1.1rem" }}>${student.grade}</b>
-      </div>
-      ${showGpa && html`<div>
-        <div style=${{ fontSize: "0.85rem", color: "#666" }}>গড় জিপিএ</div>
-        <b style=${{ fontSize: "1.1rem" }}>${toBn(student.gpa.toFixed(2))}</b>
-      </div>`}
     </div>
 
+    <!-- স্বাক্ষর -->
     <div style=${{
       display: "flex",
       justifyContent: "space-between",
-      marginTop: "40px",
-      paddingTop: "16px",
-      borderTop: "1px dashed #bbb",
+      marginTop: "18px",
+      paddingTop: "6px",
       textAlign: "center",
-      fontSize: "0.88rem",
-      color: "#555"
+      fontSize: "0.82rem",
+      color: "#222"
     }}>
       <div style=${{ flex: 1 }}>
-        <div style=${{ borderTop: "1px solid #777", width: "130px", margin: "0 auto 4px" }}></div>
+        <div style=${{ borderTop: "1px solid #444", width: "130px", margin: "0 auto 4px" }}></div>
         শ্রেণি শিক্ষকের স্বাক্ষর
       </div>
       <div style=${{ flex: 1 }}>
-        <div style=${{ borderTop: "1px solid #777", width: "130px", margin: "0 auto 4px" }}></div>
+        <div style=${{ borderTop: "1px solid #444", width: "130px", margin: "0 auto 4px" }}></div>
         অভিভাবকের স্বাক্ষর
       </div>
       <div style=${{ flex: 1 }}>
-        <div style=${{ borderTop: "1px solid #777", width: "130px", margin: "0 auto 4px" }}></div>
+        <div style=${{ borderTop: "1px solid #444", width: "130px", margin: "0 auto 4px" }}></div>
         প্রধান শিক্ষকের স্বাক্ষর ও সিল
       </div>
     </div>
   </div>`;
 }
+
+export const MarksheetCard = OfficialLandscapeMarksheet;
 
 // ৪. মূল ফলাফল ভিউ (রেজিস্টার, ট্যাবুলেশন শিট, মার্কশিট ও প্রকাশ)
 export function ResultsView({ profile }) {
@@ -618,6 +863,7 @@ export function ResultsView({ profile }) {
   const [marksDocs, setMarksDocs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [batchPrintCards, setBatchPrintCards] = useState(false);
 
   const [publishMsg, setPublishMsg] = useState("");
   const [publishBusy, setPublishBusy] = useState(false);
@@ -753,12 +999,12 @@ export function ResultsView({ profile }) {
     <div class="no-print" style=${{ display: "flex", gap: "8px", borderBottom: "2px solid var(--line)", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
       <button class=${viewMode === "register" ? "primary" : "ghost"}
         style=${{ width: "auto", margin: 0, padding: "8px 16px" }}
-        onClick=${() => { setViewMode("register"); setSelectedStudent(null); }}>
+        onClick=${() => { setViewMode("register"); setSelectedStudent(null); setBatchPrintCards(false); }}>
         বিষয় রেজিস্টার (১৭ কলাম)
       </button>
       <button class=${viewMode === "consolidated" ? "primary" : "ghost"}
         style=${{ width: "auto", margin: 0, padding: "8px 16px" }}
-        onClick=${() => { setViewMode("consolidated"); setSelectedStudent(null); }}>
+        onClick=${() => { setViewMode("consolidated"); setSelectedStudent(null); setBatchPrintCards(false); }}>
         সামগ্রিক ট্যাবুলেশন শিট
       </button>
       ${isAdmin && html`<button class=${viewMode === "publish" ? "primary" : "ghost"}
@@ -855,15 +1101,45 @@ export function ResultsView({ profile }) {
 
       ${loading && html`<p class="sub">ফলাফল তৈরি হচ্ছে…</p>`}
 
-      ${selectedStudent && html`<${MarksheetCard}
+      ${batchPrintCards && html`<div class="card" style=${{ padding: "14px", marginTop: "14px" }}>
+        <div class="no-print" style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", paddingBottom: "10px", borderBottom: "2px solid var(--acc)", flexWrap: "wrap", gap: "10px" }}>
+          <button type="button" class="ghost" onClick=${() => setBatchPrintCards(false)} style=${{ width: "auto", margin: 0, padding: "6px 14px" }}>
+            ← ট্যাবুলেশনে ফিরুন
+          </button>
+          <div style=${{ fontSize: "0.9rem", color: "var(--mute)", fontWeight: 600 }}>
+            মোট <b>${toBn(students.length)} জন</b> শিক্ষার্থীর অগ্রগতি পত্র (Landscape PDF)
+          </div>
+          <button type="button" onClick=${() => window.print()} style=${{ width: "auto", margin: 0, padding: "7px 20px", background: "var(--acc)", color: "#fff", fontWeight: 700 }}>
+            🖨️ এখনই প্রিন্ট / PDF সংরক্ষণ করুন
+          </button>
+        </div>
+
+        <div class="print-area">
+          ${students.map(s => html`<div class="landscape-page" key=${s.sid}>
+            <${OfficialLandscapeMarksheet}
+              student=${s}
+              curClass=${curClass}
+              section=${section}
+              className=${curClass?.name || ""}
+              marksDocs=${marksDocs}
+              examConfig=${examConfig}
+              allSubjectAverages=${allSubjectAverages}
+              isBatch=${true} />
+          </div>`)}
+        </div>
+      </div>`}
+
+      ${!batchPrintCards && selectedStudent && html`<${OfficialLandscapeMarksheet}
         student=${selectedStudent}
-        evalName=${termOption === "annual" ? "বার্ষিক সমন্বিত মূল্যায়ন" : DEFAULT_TERMS.find(t => t.id === termOption)?.name}
-        className=${curClass?.name || ""}
+        curClass=${curClass}
         section=${section}
+        className=${curClass?.name || ""}
+        marksDocs=${marksDocs}
         examConfig=${examConfig}
+        allSubjectAverages=${allSubjectAverages}
         onClose=${() => setSelectedStudent(null)} />`}
 
-      ${!selectedStudent && !loading && students.length > 0 && viewMode === "register" && html`<${SubjectRegisterView}
+      ${!batchPrintCards && !selectedStudent && !loading && students.length > 0 && viewMode === "register" && html`<${SubjectRegisterView}
         students=${students}
         marksDocs=${marksDocs}
         curClass=${curClass}
@@ -872,7 +1148,7 @@ export function ResultsView({ profile }) {
         examConfig=${examConfig}
         allSubjectAverages=${allSubjectAverages} />`}
 
-      ${!selectedStudent && !loading && students.length > 0 && viewMode === "consolidated" && html`<${ConsolidatedTabulationView}
+      ${!batchPrintCards && !selectedStudent && !loading && students.length > 0 && viewMode === "consolidated" && html`<${ConsolidatedTabulationView}
         students=${students}
         marksDocs=${marksDocs}
         curClass=${curClass}
@@ -880,7 +1156,8 @@ export function ResultsView({ profile }) {
         subjects=${subjects}
         examConfig=${examConfig}
         termOption=${termOption}
-        onSelectStudent=${setSelectedStudent} />`}
+        onSelectStudent=${setSelectedStudent}
+        onBatchPrint=${() => setBatchPrintCards(true)} />`}
 
       ${!loading && students.length === 0 && html`<div class="card">
         <p class="sub" style=${{ margin: 0 }}>এই শ্রেণির জন্য কোনো শিক্ষার্থী পাওয়া যায়নি।</p>
@@ -1046,7 +1323,9 @@ export function PublicResultSearch({ onBack }) {
         student: stuResult,
         evalName: termId === "annual" ? "বার্ষিক চূড়ান্ত ফলাফল" : DEFAULT_TERMS.find(t => t.id === termId)?.name || "মূল্যায়ন",
         className: curClass?.name || "",
-        section: section
+        section: section,
+        curClass: curClass,
+        marksDocs: mList
       });
     } catch (ex) {
       console.error(ex);
@@ -1063,12 +1342,14 @@ export function PublicResultSearch({ onBack }) {
       <div style=${{ fontSize: "0.9rem", color: "var(--acc)", fontWeight: 600 }}>অভিভাবক ও শিক্ষার্থী পোর্টাল</div>
     </div>
 
-    ${resultData && html`<${MarksheetCard}
+    ${resultData && html`<${OfficialLandscapeMarksheet}
       student=${resultData.student}
-      evalName=${resultData.evalName}
+      curClass=${resultData.curClass}
       className=${resultData.className}
       section=${resultData.section}
+      marksDocs=${resultData.marksDocs}
       examConfig=${examConfig}
+      allSubjectAverages=${{ [resultData.student.sid]: { grade: resultData.student.grade, avgPct: resultData.student.avgPct, total: resultData.student.totalScore, rankBn: resultData.student.rankBn } }}
       onClose=${() => setResultData(null)} />`}
 
     ${!resultData && html`<form class="card" onSubmit=${handleSearch}>

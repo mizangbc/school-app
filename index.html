@@ -30,14 +30,16 @@ button:disabled{opacity:.6}
   body{background:#fff !important;color:#000 !important}
   .wrap{max-width:100% !important;margin:0 !important;padding:0 !important}
   .no-print,.top,button,select{display:none !important}
-  .card{border:none !important;padding:0 !important}
-  .marksheet-box{border:2px solid #1f7a5a !important;box-shadow:none !important;page-break-inside:avoid}
-  @page{margin:10mm}
+  .card{border:none !important;padding:0 !important;box-shadow:none !important}
+  @page{size: A4 landscape; margin: 6mm 8mm}
+  .landscape-page{page-break-after:always;break-after:page;width:100% !important;box-sizing:border-box}
+  .landscape-page:last-child{page-break-after:auto;break-after:auto}
+  .marksheet-box{border:1.5px solid #222 !important;box-shadow:none !important;page-break-inside:avoid}
 }
 </style>
 </head>
 <body>
 <div class="wrap" id="root"><p class="sub">লোড হচ্ছে…</p></div>
-<script type="module" src="./app.js?v=14"></script>
+<script type="module" src="./app.js?v=15"></script>
 </body>
 </html>
