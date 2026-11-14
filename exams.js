@@ -9,7 +9,27 @@ const bn2en = s => String(s || "").replace(/[০-৯]/g, d => "০১২৩৪�
 const digits = s => bn2en(s).replace(/\D/g, "");
 const toBn = n => String(n ?? "").replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
 
-// জাতীয় প্রাথমিক শিক্ষা কারিকুলাম ডিফল্ট সেটিং
+// প্রচলিত লেটার গ্রেড প্রিসেট
+export const LETTER_GRADES = [
+  { grade: "A+", gpa: 5.0, min: 80, max: 100, remark: "অতি উত্তম" },
+  { grade: "A",  gpa: 4.0, min: 70, max: 79,  remark: "উত্তম" },
+  { grade: "A-", gpa: 3.5, min: 60, max: 69,  remark: "ভালো" },
+  { grade: "B",  gpa: 3.0, min: 50, max: 59,  remark: "সন্তোষজনক" },
+  { grade: "C",  gpa: 2.0, min: 40, max: 49,  remark: "চলতি মান" },
+  { grade: "D",  gpa: 1.0, min: 33, max: 39,  remark: "অগ্রগতি প্রয়োজন" },
+  { grade: "F",  gpa: 0.0, min: 0,  max: 32,  remark: "অনুত্তীর্ণ" }
+];
+
+// বর্ণনামূলক মূল্যায়ন প্রিসেট (প্রাথমিক কারিকুলাম)
+export const DESCRIPTIVE_GRADES = [
+  { grade: "অতি উত্তম",         gpa: 5.0, min: 80, max: 100, remark: "সর্বোচ্চ অর্জন" },
+  { grade: "উত্তম",             gpa: 4.0, min: 65, max: 79,  remark: "সন্তোষজনক অর্জন" },
+  { grade: "ভালো",              gpa: 3.0, min: 50, max: 64,  remark: "উন্নতিশীল অর্জন" },
+  { grade: "চলতি মান",          gpa: 2.0, min: 33, max: 49,  remark: "প্রাথমিক অর্জন" },
+  { grade: "অগ্রগতি প্রয়োজন",  gpa: 0.0, min: 0,  max: 32,  remark: "বিশেষ সহায়তা প্রয়োজন" }
+];
+
+// ডিফল্ট সেটিং
 export function defaultExamConfig() {
   return {
     terminals: [
@@ -21,15 +41,7 @@ export function defaultExamConfig() {
       continuous: 30, // ধারাবাহিক মূল্যায়ন ৩০%
       written: 70     // প্রান্তিক লিখিত পরীক্ষা ৭০%
     },
-    grading: [
-      { grade: "A+", gpa: 5.0, min: 80, max: 100, remark: "অতি উত্তম" },
-      { grade: "A",  gpa: 4.0, min: 70, max: 79,  remark: "উত্তম" },
-      { grade: "A-", gpa: 3.5, min: 60, max: 69,  remark: "ভালো" },
-      { grade: "B",  gpa: 3.0, min: 50, max: 59,  remark: "সন্তোষজনক" },
-      { grade: "C",  gpa: 2.0, min: 40, max: 49,  remark: "চলতি মান" },
-      { grade: "D",  gpa: 1.0, min: 33, max: 39,  remark: "অগ্রগতি প্রয়োজন" },
-      { grade: "F",  gpa: 0.0, min: 0,  max: 32,  remark: "অনুত্তীর্ণ" }
-    ],
+    grading: LETTER_GRADES,
     passMarkPercent: 33,
     displayOptions: {
       showMarks: true,
@@ -78,6 +90,31 @@ export function Exams() {
     setConfig({ ...config, grading: grades });
   }
 
+  function addGrade() {
+    const grades = [...config.grading];
+    grades.push({
+      grade: "",
+      gpa: 0.0,
+      min: 0,
+      max: 100,
+      remark: ""
+    });
+    setConfig({ ...config, grading: grades });
+  }
+
+  function removeGrade(i) {
+    if (config.grading.length <= 1) {
+      alert("কমপক্ষে একটি গ্রেড ধাপ থাকতে হবে।");
+      return;
+    }
+    const grades = config.grading.filter((_, idx) => idx !== i);
+    setConfig({ ...config, grading: grades });
+  }
+
+  function applyPreset(preset) {
+    setConfig({ ...config, grading: preset });
+  }
+
   function updateDisplay(field, val) {
     setConfig({
       ...config,
@@ -99,6 +136,17 @@ export function Exams() {
     const totalRatio = (config.assessmentRatio.continuous || 0) + (config.assessmentRatio.written || 0);
     if (totalRatio !== 100) {
       return setErr(`ধারাবাহিক ও লিখিত মূল্যায়নের যোগফল ১০০% হতে হবে।`);
+    }
+
+    // গ্রেডিং তালিকা যাচাই
+    for (let i = 0; i < config.grading.length; i++) {
+      const g = config.grading[i];
+      if (!String(g.grade || "").trim()) {
+        return setErr(`ক্রমিক ${toBn(i + 1)} গ্রেডের নাম বা শিরোনাম ফাঁকা রাখা যাবে না।`);
+      }
+      if (g.min > g.max) {
+        return setErr(`"${g.grade}" গ্রেডে সর্বনিম্ন নম্বর (${toBn(g.min)}) সর্বোচ্চ নম্বরের (${toBn(g.max)}) চেয়ে বড় হতে পারে না।`);
+      }
     }
 
     setBusy(true);
@@ -175,24 +223,79 @@ export function Exams() {
       </p>
     </div>
 
-    <!-- ৩. গ্রেডিং স্কেল -->
+    <!-- ৩. গ্রেডিং স্কেল এডিট ও কাস্টমাইজেশন -->
     <div class="card" style=${{ marginBottom: "16px" }}>
-      <h3 style=${{ margin: "0 0 10px", fontSize: "1.1rem" }}>৩. গ্রেডিং স্কেল (জাতীয় প্রাথমিক কারিকুলাম)</h3>
-      <div style=${{ maxHeight: "260px", overflowY: "auto", border: "1px solid var(--line)", borderRadius: "8px", padding: "4px 8px" }}>
-        ${config.grading.map((g, i) => html`<div key=${g.grade} style=${{
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "6px 0", borderBottom: i < config.grading.length - 1 ? "1px dashed var(--line)" : "none",
-          fontSize: "0.9rem"
+      <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+        <h3 style=${{ margin: 0, fontSize: "1.1rem" }}>৩. গ্রেডিং স্কেল ও নম্বর পরিসীমা</h3>
+        <button type="button" class="ghost" style=${{ width: "auto", padding: "4px 10px", fontSize: "0.85rem" }} onClick=${addGrade}>
+          + নতুন গ্রেড যোগ
+        </button>
+      </div>
+
+      <p class="sub" style=${{ margin: "0 0 10px", fontSize: "0.85rem" }}>
+        প্রয়োজনে গ্রেডের নাম (যেমন A+ বা অতি উত্তম), পয়েন্ট ও নম্বরের রেঞ্জ পরিবর্তন করুন:
+      </p>
+
+      <!-- দ্রুত প্রিসেট বোতাম -->
+      <div style=${{ display: "flex", gap: "6px", marginBottom: "12px", flexWrap: "wrap" }}>
+        <span style=${{ fontSize: "0.85rem", color: "var(--mute)", alignSelf: "center" }}>প্রিসেট:</span>
+        <button type="button" class="ghost" style=${{ padding: "3px 8px", fontSize: "0.8rem", width: "auto" }} onClick=${() => applyPreset(LETTER_GRADES)}>
+          লেটার গ্রেড (A+, A...)
+        </button>
+        <button type="button" class="ghost" style=${{ padding: "3px 8px", fontSize: "0.8rem", width: "auto" }} onClick=${() => applyPreset(DESCRIPTIVE_GRADES)}>
+          বর্ণনামূলক (অতি উত্তম, উত্তম...)
+        </button>
+      </div>
+
+      <!-- গ্রেড তালিকা এডিট কার্ডসমূহ -->
+      <div style=${{ display: "grid", gap: "10px" }}>
+        ${config.grading.map((g, i) => html`<div key=${i} style=${{
+          border: "1px solid var(--line)", borderRadius: "8px", padding: "10px",
+          background: "var(--bg)"
         }}>
-          <b style=${{ width: "35px", color: g.grade === "F" ? "var(--err)" : "var(--acc)" }}>${g.grade}</b>
-          <span style=${{ width: "50px", color: "var(--mute)" }}>${toBn(g.gpa.toFixed(1))}</span>
-          <span style=${{ flex: 1, textAlign: "center" }}>${toBn(g.min)}% - ${toBn(g.max)}%</span>
-          <span style=${{ width: "100px", textAlign: "right", color: "var(--mute)" }}>${g.remark}</span>
+          <div style=${{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <div style=${{ flex: 2 }}>
+              <label style=${{ margin: "0 0 3px", fontSize: "0.78rem", color: "var(--mute)" }}>গ্রেড / শিরোনাম</label>
+              <input value=${g.grade} placeholder="যেমন: A+ বা অতি উত্তম"
+                onInput=${e => updateGrade(i, "grade", e.target.value)}
+                style=${{ padding: "6px 8px", fontWeight: 600, background: "#fff" }} />
+            </div>
+            <div style=${{ flex: 1 }}>
+              <label style=${{ margin: "0 0 3px", fontSize: "0.78rem", color: "var(--mute)" }}>পয়েন্ট (GPA)</label>
+              <input type="number" step="0.1" value=${g.gpa}
+                onInput=${e => updateGrade(i, "gpa", parseFloat(bn2en(e.target.value)) || 0)}
+                style=${{ padding: "6px 8px", textAlign: "center", background: "#fff" }} />
+            </div>
+            <button type="button" class="danger" style=${{ width: "auto", padding: "6px 10px", marginTop: "16px" }}
+              onClick=${() => removeGrade(i)} title="এই গ্রেড বাদ দিন">×</button>
+          </div>
+
+          <div style=${{ display: "flex", gap: "8px", alignItems: "center", marginTop: "8px" }}>
+            <div style=${{ flex: 1 }}>
+              <label style=${{ margin: "0 0 3px", fontSize: "0.78rem", color: "var(--mute)" }}>নম্বর পরিসীমা (%)</label>
+              <div style=${{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <input type="tel" inputMode="numeric" value=${g.min}
+                  onInput=${e => updateGrade(i, "min", parseInt(digits(e.target.value), 10) || 0)}
+                  style=${{ padding: "6px 6px", textAlign: "center", background: "#fff", flex: 1 }} />
+                <span style=${{ fontSize: "0.85rem", color: "var(--mute)" }}>থেকে</span>
+                <input type="tel" inputMode="numeric" value=${g.max}
+                  onInput=${e => updateGrade(i, "max", parseInt(digits(e.target.value), 10) || 0)}
+                  style=${{ padding: "6px 6px", textAlign: "center", background: "#fff", flex: 1 }} />
+              </div>
+            </div>
+            <div style=${{ flex: 1 }}>
+              <label style=${{ margin: "0 0 3px", fontSize: "0.78rem", color: "var(--mute)" }}>মন্তব্য (ঐচ্ছিক)</label>
+              <input value=${g.remark || ""} placeholder="যেমন: উত্তম"
+                onInput=${e => updateGrade(i, "remark", e.target.value)}
+                style=${{ padding: "6px 8px", background: "#fff" }} />
+            </div>
+          </div>
         </div>`)}
       </div>
-      <div style=${{ marginTop: "12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <label style=${{ margin: 0 }}>পাস নম্বর (%)</label>
-        <div style=${{ width: "80px" }}>
+
+      <div style=${{ marginTop: "14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <label style=${{ margin: 0, fontWeight: 500 }}>পাস নম্বর (%)</label>
+        <div style=${{ width: "90px" }}>
           <input type="tel" inputMode="numeric" value=${config.passMarkPercent}
             onInput=${e => setConfig({ ...config, passMarkPercent: parseInt(digits(e.target.value), 10) || 33 })}
             style=${{ padding: "6px 8px", textAlign: "center" }} />
@@ -212,7 +315,7 @@ export function Exams() {
         <label style=${{ display: "flex", alignItems: "center", gap: "10px", margin: 0, cursor: "pointer" }}>
           <input type="checkbox" checked=${config.displayOptions.showGrade}
             onChange=${e => updateDisplay("showGrade", e.target.checked)} style=${{ width: "auto" }} />
-          <span>লেটার গ্রেড ($A^+, A...$) প্রদর্শন করুন</span>
+          <span>গ্রেড / অর্জন মাত্রা প্রদর্শন করুন</span>
         </label>
         <label style=${{ display: "flex", alignItems: "center", gap: "10px", margin: 0, cursor: "pointer" }}>
           <input type="checkbox" checked=${config.displayOptions.showGpa}
