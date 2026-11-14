@@ -2,11 +2,13 @@ import React, { useState } from "https://esm.sh/react@18.3.1";
 import htm from "https://esm.sh/htm@3.1.1";
 import { auth } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { Structure } from "./structure.js?v=9";
-import { Students } from "./students.js?v=9";
-import { Teachers, MyAssignments } from "./teachers.js?v=9";
-import { Exams } from "./exams.js?v=9";
-import { MarksEntry, Verification } from "./marks.js?v=9";
+import { Structure } from "./structure.js?v=11";
+import { Students } from "./students.js?v=11";
+import { Teachers, MyAssignments } from "./teachers.js?v=11";
+import { Exams } from "./exams.js?v=11";
+import { MarksEntry, Verification } from "./marks.js?v=11";
+import { ResultsView } from "./results.js?v=11";
+import { BackupAndPromotion } from "./backup.js?v=11";
 
 const html = htm.bind(React.createElement);
 
@@ -27,9 +29,9 @@ document.head.appendChild(st);
 
 const ROLES = { main_admin: "প্রধান অ্যাডমিন", assistant_admin: "সহকারী অ্যাডমিন", teacher: "শিক্ষক", verifier: "ফলাফল যাচাইকারী" };
 const MENU = {
-  main_admin: ["শিক্ষার্থী ও Excel আপলোড", "শ্রেণি, শাখা ও বিষয়", "পরীক্ষার সেটিং", "শিক্ষক ও বরাদ্দ", "যাচাই ও অনুমোদন", "ফলাফল ও প্রকাশ", "শিক্ষাবর্ষ ও ব্যাকআপ"],
-  assistant_admin: ["শিক্ষার্থী ও Excel আপলোড", "শ্রেণি, শাখা ও বিষয়", "ফলাফল দেখা"],
-  teacher: ["নম্বর এন্ট্রি", "আমার বরাদ্দ"],
+  main_admin: ["নম্বর এন্ট্রি", "ফলাফল ও প্রকাশ", "শিক্ষার্থী ও Excel আপলোড", "শ্রেণি, শাখা ও বিষয়", "পরীক্ষার সেটিং", "শিক্ষক ও বরাদ্দ", "যাচাই ও অনুমোদন", "শিক্ষাবর্ষ ও ব্যাকআপ"],
+  assistant_admin: ["নম্বর এন্ট্রি", "ফলাফল দেখা", "শিক্ষার্থী ও Excel আপলোড", "শ্রেণি, শাখা ও বিষয়"],
+  teacher: ["নম্বর এন্ট্রি", "ফলাফল দেখা", "আমার বরাদ্দ"],
   verifier: ["নম্বর যাচাই ও অনুমোদন", "ফলাফল দেখা"]
 };
 const PAGES = {
@@ -40,7 +42,10 @@ const PAGES = {
   "আমার বরাদ্দ": MyAssignments,
   "নম্বর এন্ট্রি": MarksEntry,
   "যাচাই ও অনুমোদন": Verification,
-  "নম্বর যাচাই ও অনুমোদন": Verification
+  "নম্বর যাচাই ও অনুমোদন": Verification,
+  "ফলাফল ও প্রকাশ": ResultsView,
+  "ফলাফল দেখা": ResultsView,
+  "শিক্ষাবর্ষ ও ব্যাকআপ": BackupAndPromotion
 };
 
 export function Home({ profile }) {

@@ -21,7 +21,7 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     match /config/{docId} {
-      allow read: if hasProfile();
+      allow read: if true;
       allow write: if isAdmin();
     }
     match /students/{sid} {

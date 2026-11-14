@@ -26,10 +26,18 @@ button:disabled{opacity:.6}
 .grid{display:grid;gap:10px;margin-top:16px}
 .item{border:1px dashed var(--line);border-radius:8px;padding:12px 14px;color:var(--mute);display:flex;justify-content:space-between}
 .item b{color:var(--ink);font-weight:600}
+@media print{
+  body{background:#fff !important;color:#000 !important}
+  .wrap{max-width:100% !important;margin:0 !important;padding:0 !important}
+  .no-print,.top,button,select{display:none !important}
+  .card{border:none !important;padding:0 !important}
+  .marksheet-box{border:2px solid #1f7a5a !important;box-shadow:none !important;page-break-inside:avoid}
+  @page{margin:10mm}
+}
 </style>
 </head>
 <body>
 <div class="wrap" id="root"><p class="sub">লোড হচ্ছে…</p></div>
-<script type="module" src="./app.js?v=9"></script>
+<script type="module" src="./app.js?v=11"></script>
 </body>
 </html>

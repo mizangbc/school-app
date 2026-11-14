@@ -9,7 +9,32 @@ const bn2en = s => String(s || "").replace(/[০-৯]/g, d => "০১২৩৪�
 const digits = s => bn2en(s).replace(/\D/g, "");
 const toBn = n => String(n ?? "").replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
 
-// ১. লেটার গ্রেড প্রিসেট
+// ৯টি সুনির্দিষ্ট মূল্যায়ন তালিকা
+export const DEFAULT_EXAMS = [
+  // ১ম পর্যায়
+  { id: "ca_1_1", name: "ধারাবাহিক মূল্যায়ন ১.১", phase: 1, type: "continuous", fullMarks: 20 },
+  { id: "ca_1_2", name: "ধারাবাহিক মূল্যায়ন ১.২", phase: 1, type: "continuous", fullMarks: 20 },
+  { id: "term_1", name: "প্রথম প্রান্তিক মূল্যায়ন", phase: 1, type: "terminal", fullMarks: 60 },
+
+  // ২য় পর্যায়
+  { id: "ca_2_1", name: "ধারাবাহিক মূল্যায়ন ২.১", phase: 2, type: "continuous", fullMarks: 20 },
+  { id: "ca_2_2", name: "ধারাবাহিক মূল্যায়ন ২.২", phase: 2, type: "continuous", fullMarks: 20 },
+  { id: "term_2", name: "দ্বিতীয় প্রান্তিক মূল্যায়ন", phase: 2, type: "terminal", fullMarks: 60 },
+
+  // ৩য় পর্যায়
+  { id: "ca_3_1", name: "ধারাবাহিক মূল্যায়ন ৩.১", phase: 3, type: "continuous", fullMarks: 20 },
+  { id: "ca_3_2", name: "ধারাবাহিক মূল্যায়ন ৩.২", phase: 3, type: "continuous", fullMarks: 20 },
+  { id: "term_3", name: "তৃতীয় প্রান্তিক মূল্যায়ন", phase: 3, type: "terminal", fullMarks: 60 }
+];
+
+// বার্ষিক ফলাফলে প্রান্তিকসমূহের শতকরা ওজন
+export const DEFAULT_ANNUAL_WEIGHTS = [
+  { phase: 1, name: "১ম প্রান্তিক সামগ্রিক", weight: 25 },
+  { phase: 2, name: "২য় প্রান্তিক সামগ্রিক", weight: 25 },
+  { phase: 3, name: "৩য় প্রান্তিক সামগ্রিক", weight: 50 }
+];
+
+// লেটার গ্রেড প্রিসেট
 export const LETTER_GRADES = [
   { grade: "A+", gpa: 5.0, min: 80, max: 100 },
   { grade: "A",  gpa: 4.0, min: 70, max: 79 },
@@ -20,7 +45,7 @@ export const LETTER_GRADES = [
   { grade: "F",  gpa: 0.0, min: 0,  max: 32 }
 ];
 
-// ২. বর্ণনামূলক মূল্যায়ন প্রিসেট (প্রাথমিক কারিকুলাম)
+// বর্ণনামূলক মূল্যায়ন প্রিসেট (প্রাথমিক কারিকুলাম)
 export const DESCRIPTIVE_GRADES = [
   { grade: "অতি উত্তম",        gpa: 5.0, min: 80, max: 100 },
   { grade: "উত্তম",            gpa: 4.0, min: 65, max: 79 },
@@ -31,15 +56,8 @@ export const DESCRIPTIVE_GRADES = [
 
 export function defaultExamConfig() {
   return {
-    terminals: [
-      { id: "term1", name: "১ম প্রান্তিক মূল্যায়ন", active: true, weight: 25 },
-      { id: "term2", name: "২য় প্রান্তিক মূল্যায়ন", active: true, weight: 25 },
-      { id: "term3", name: "বার্ষিক মূল্যায়ন", active: true, weight: 50 }
-    ],
-    assessmentRatio: {
-      continuous: 30,
-      written: 70
-    },
+    exams: DEFAULT_EXAMS,
+    annualWeights: DEFAULT_ANNUAL_WEIGHTS,
     grading: LETTER_GRADES,
     passMarkPercent: 33,
     displayOptions: {
@@ -62,6 +80,10 @@ export function Exams() {
     getDoc(doc(db, "config", "exams")).then(s => {
       if (s.exists()) {
         const d = s.data();
+        const examsList = (d.exams && Array.isArray(d.exams) && d.exams.length > 0)
+          ? d.exams : DEFAULT_EXAMS;
+        const weightsList = (d.annualWeights && Array.isArray(d.annualWeights) && d.annualWeights.length > 0)
+          ? d.annualWeights : DEFAULT_ANNUAL_WEIGHTS;
         const grades = (d.grading && Array.isArray(d.grading) && d.grading.length > 0)
           ? d.grading.map(g => ({
               grade: g.grade || "",
@@ -70,9 +92,12 @@ export function Exams() {
               max: g.max != null ? g.max : 100
             }))
           : LETTER_GRADES;
+
         setConfig({
           ...defaultExamConfig(),
           ...d,
+          exams: examsList,
+          annualWeights: weightsList,
           grading: grades
         });
       } else {
@@ -86,18 +111,18 @@ export function Exams() {
     });
   }, []);
 
-  function updateTerminal(i, field, val) {
-    const terms = [...config.terminals];
-    terms[i] = { ...terms[i], [field]: val };
-    setConfig({ ...config, terminals: terms });
+  function updateAnnualWeight(phase, val) {
+    const weights = (config.annualWeights || DEFAULT_ANNUAL_WEIGHTS).map(w =>
+      w.phase === phase ? { ...w, weight: parseInt(digits(val), 10) || 0 } : w
+    );
+    setConfig({ ...config, annualWeights: weights });
   }
 
-  function updateRatio(field, val) {
-    const num = parseInt(digits(val), 10) || 0;
-    const ratio = { ...config.assessmentRatio, [field]: num };
-    if (field === "continuous") ratio.written = Math.max(0, 100 - num);
-    else ratio.continuous = Math.max(0, 100 - num);
-    setConfig({ ...config, assessmentRatio: ratio });
+  function updateExamMarks(id, val) {
+    const updated = (config.exams || DEFAULT_EXAMS).map(e =>
+      e.id === id ? { ...e, fullMarks: parseInt(digits(val), 10) || 0 } : e
+    );
+    setConfig({ ...config, exams: updated });
   }
 
   function updateGrade(i, field, val) {
@@ -108,12 +133,7 @@ export function Exams() {
 
   function addGrade() {
     const list = [...config.grading];
-    list.push({
-      grade: "",
-      gpa: "0.0",
-      min: "0",
-      max: "100"
-    });
+    list.push({ grade: "", gpa: "0.0", min: "0", max: "100" });
     setConfig({ ...config, grading: list });
   }
 
@@ -127,10 +147,7 @@ export function Exams() {
   }
 
   function applyPreset(preset) {
-    setConfig({
-      ...config,
-      grading: preset.map(g => ({ ...g }))
-    });
+    setConfig({ ...config, grading: preset.map(g => ({ ...g })) });
   }
 
   function updateDisplay(field, val) {
@@ -144,32 +161,23 @@ export function Exams() {
     setErr("");
     setOkMsg("");
 
-    const totalWeight = (config.terminals || []).reduce((sum, t) => sum + (parseInt(digits(t.weight), 10) || 0), 0);
+    // ১. বার্ষিক ওজন যাচাই
+    const weights = config.annualWeights || DEFAULT_ANNUAL_WEIGHTS;
+    const totalWeight = weights.reduce((sum, w) => sum + (parseInt(digits(w.weight), 10) || 0), 0);
     if (totalWeight !== 100) {
-      return setErr(`বার্ষিক ফলাফলে সব প্রান্তিকের ওজনের মোট যোগফল ১০০% হতে হবে (বর্তমানে আছে: ${toBn(totalWeight)}%)।`);
+      return setErr(`বার্ষিক ফলাফলে প্রান্তিকসমূহের মোট ওজনের যোগফল ১০০% হতে হবে (বর্তমানে আছে: ${toBn(totalWeight)}%)।`);
     }
 
-    const totalRatio = (parseInt(digits(config.assessmentRatio.continuous), 10) || 0) +
-                       (parseInt(digits(config.assessmentRatio.written), 10) || 0);
-    if (totalRatio !== 100) {
-      return setErr(`ধারাবাহিক ও লিখিত মূল্যায়নের যোগফল ১০০% হতে হবে।`);
-    }
-
+    // ২. গ্রেডিং তালিকা যাচাই
     const finalGrading = [];
     for (let i = 0; i < config.grading.length; i++) {
       const g = config.grading[i];
       const gName = String(g.grade || "").trim();
-      if (!gName) {
-        return setErr(`ধাপ #${toBn(i + 1)}-এর গ্রেডের নাম বা অর্জিত মান লিখুন।`);
-      }
+      if (!gName) return setErr(`ক্রমিক ${toBn(i + 1)} গ্রেডের নাম ফাঁকা রাখা যাবে না।`);
       const min = parseInt(bn2en(g.min), 10);
       const max = parseInt(bn2en(g.max), 10);
-      if (isNaN(min) || isNaN(max)) {
-        return setErr(`"${gName}"-এর সর্বনিম্ন ও সর্বোচ্চ নম্বর সঠিকভাবে লিখুন।`);
-      }
-      if (min > max) {
-        return setErr(`"${gName}"-এ সর্বনিম্ন নম্বর (${toBn(min)}) সর্বোচ্চ নম্বরের (${toBn(max)}) চেয়ে বেশি হতে পারবে না।`);
-      }
+      if (isNaN(min) || isNaN(max)) return setErr(`"${gName}"-এর নম্বর পরিসীমা সঠিকভাবে লিখুন।`);
+      if (min > max) return setErr(`"${gName}"-এ সর্বনিম্ন নম্বর (${toBn(min)}) সর্বোচ্চ নম্বরের (${toBn(max)}) চেয়ে বেশি হতে পারবে না।`);
       finalGrading.push({
         grade: gName,
         gpa: parseFloat(bn2en(g.gpa)) || 0.0,
@@ -183,10 +191,11 @@ export function Exams() {
       await setDoc(doc(db, "config", "exams"), {
         ...config,
         grading: finalGrading,
+        annualWeights: weights,
         passMarkPercent: parseInt(digits(config.passMarkPercent), 10) || 33,
         updatedAt: serverTimestamp()
       });
-      setConfig({ ...config, grading: finalGrading });
+      setConfig({ ...config, grading: finalGrading, annualWeights: weights });
       setOkMsg("পরীক্ষার সেটিং সফলভাবে সংরক্ষণ করা হয়েছে।");
     } catch (ex) {
       console.error(ex);
@@ -198,59 +207,91 @@ export function Exams() {
   if (loading) return html`<p class="sub">পরীক্ষার সেটিং লোড হচ্ছে…</p>`;
   if (!config) return html`<p class="err">${err || "সেটিং পাওয়া যায়নি।"}</p>`;
 
-  const totalTermWeight = (config.terminals || []).reduce((sum, t) => sum + (parseInt(digits(t.weight), 10) || 0), 0);
+  const weights = config.annualWeights || DEFAULT_ANNUAL_WEIGHTS;
+  const totalWeight = weights.reduce((sum, w) => sum + (parseInt(digits(w.weight), 10) || 0), 0);
+
+  const phase1Exams = (config.exams || DEFAULT_EXAMS).filter(e => e.phase === 1);
+  const phase2Exams = (config.exams || DEFAULT_EXAMS).filter(e => e.phase === 2);
+  const phase3Exams = (config.exams || DEFAULT_EXAMS).filter(e => e.phase === 3);
 
   return html`<div style=${{ marginTop: "14px" }}>
     <div class="card" style=${{ marginBottom: "16px" }}>
-      <h3 style=${{ margin: "0 0 10px", fontSize: "1.1rem" }}>১. প্রান্তিক পরীক্ষা ও বার্ষিক ওজনের হার</h3>
-      <p class="sub" style=${{ margin: "0 0 12px", fontSize: "0.9rem" }}>
-        বার্ষিক চূড়ান্ত ফলাফল তৈরিতে প্রতি প্রান্তিকের শতকরা ওজন (মোট ১০০%):
+      <h3 style=${{ margin: "0 0 10px", fontSize: "1.1rem" }}>১. বার্ষিক ফলাফলে প্রান্তিকসমূহের ওয়েটেজ (%)</h3>
+      <p class="sub" style=${{ margin: "0 0 12px", fontSize: "0.88rem" }}>
+        চূড়ান্ত বার্ষিক ফলাফল তৈরিতে প্রতিটি প্রান্তিকের শতকরা অনুপাত (মোট ১০০%):
       </p>
 
-      ${(config.terminals || []).map((t, i) => html`<div key=${t.id} style=${{
-        display: "flex", alignItems: "center", gap: "10px",
+      ${weights.map(w => html`<div key=${w.phase} style=${{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "8px 0", borderBottom: "1px dashed var(--line)"
       }}>
-        <div style=${{ flex: 2 }}>
-          <b>${t.name}</b>
-        </div>
-        <div style=${{ flex: 1, display: "flex", alignItems: "center", gap: "4px" }}>
-          <input type="tel" inputMode="numeric" value=${t.weight}
-            onInput=${e => updateTerminal(i, "weight", e.target.value)}
-            style=${{ padding: "6px 8px", textAlign: "center" }} />
+        <b>${w.name}</b>
+        <div style=${{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <input type="tel" inputMode="numeric" value=${w.weight}
+            onInput=${e => updateAnnualWeight(w.phase, e.target.value)}
+            style=${{ width: "65px", padding: "6px 8px", textAlign: "center", fontWeight: 600 }} />
           <span>%</span>
         </div>
       </div>`)}
 
       <div style=${{ display: "flex", justifyContent: "space-between", marginTop: "10px", fontWeight: 600 }}>
-        <span>মোট যোগফল:</span>
-        <span style=${{ color: totalTermWeight === 100 ? "var(--acc)" : "var(--err)" }}>
-          ${toBn(totalTermWeight)}% ${totalTermWeight === 100 ? "✓" : "(১০০% হতে হবে)"}
+        <span>মোট ওয়েটেজ:</span>
+        <span style=${{ color: totalWeight === 100 ? "var(--acc)" : "var(--err)" }}>
+          ${toBn(totalWeight)}% ${totalWeight === 100 ? "✓" : "(১০০% হতে হবে)"}
         </span>
       </div>
     </div>
 
     <div class="card" style=${{ marginBottom: "16px" }}>
-      <h3 style=${{ margin: "0 0 10px", fontSize: "1.1rem" }}>২. ধারাবাহিক ও লিখিত মূল্যায়নের অনুপাত</h3>
-      <p class="sub" style=${{ margin: "0 0 12px", fontSize: "0.9rem" }}>
-        প্রতি প্রান্তিকে ১০০ নম্বরের মধ্যে ধারাবাহিক ও লিখিত পরীক্ষার বিভাজন:
+      <h3 style=${{ margin: "0 0 8px", fontSize: "1.1rem" }}>২. পরীক্ষাসমূহের তালিকা ও পূর্ণমান</h3>
+      <p class="sub" style=${{ margin: "0 0 14px", fontSize: "0.88rem" }}>
+        প্রয়োজনে প্রতিটি ধারাবাহিক ও প্রান্তিক মূল্যায়নের পূর্ণমান পরিবর্তন করতে পারেন:
       </p>
 
-      <div style=${{ display: "flex", gap: "12px" }}>
-        <div style=${{ flex: 1 }}>
-          <label style=${{ marginTop: 0 }}>ধারাবাহিক মূল্যায়ন (%)</label>
-          <input type="tel" inputMode="numeric" value=${config.assessmentRatio?.continuous ?? 30}
-            onInput=${e => updateRatio("continuous", e.target.value)} />
-        </div>
-        <div style=${{ flex: 1 }}>
-          <label style=${{ marginTop: 0 }}>প্রান্তিক লিখিত পরীক্ষা (%)</label>
-          <input type="tel" inputMode="numeric" value=${config.assessmentRatio?.written ?? 70}
-            onInput=${e => updateRatio("written", e.target.value)} />
+      <div style=${{ background: "var(--bg)", padding: "10px 12px", borderRadius: "8px", marginBottom: "10px" }}>
+        <b style=${{ color: "var(--acc)", fontSize: "0.95rem" }}>✦ ১ম পর্যায়</b>
+        <div style=${{ marginTop: "6px", display: "grid", gap: "6px" }}>
+          ${phase1Exams.map(ex => html`<div key=${ex.id} style=${{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style=${{ fontSize: "0.9rem" }}>${ex.name}</span>
+            <div style=${{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <span style=${{ fontSize: "0.8rem", color: "var(--mute)" }}>পূর্ণমান:</span>
+              <input type="tel" inputMode="numeric" value=${ex.fullMarks}
+                onInput=${e => updateExamMarks(ex.id, e.target.value)}
+                style=${{ width: "55px", padding: "5px 6px", textAlign: "center", background: "#fff", fontWeight: 600 }} />
+            </div>
+          </div>`)}
         </div>
       </div>
-      <p class="sub" style=${{ margin: "8px 0 0", fontSize: "0.85rem" }}>
-        * যেমন: ধারাবাহিক ৩০% (৩০ নম্বর) + লিখিত ৭০% (৭০ নম্বর) = ১০০ পূর্ণমান।
-      </p>
+
+      <div style=${{ background: "var(--bg)", padding: "10px 12px", borderRadius: "8px", marginBottom: "10px" }}>
+        <b style=${{ color: "var(--acc)", fontSize: "0.95rem" }}>✦ ২য় পর্যায়</b>
+        <div style=${{ marginTop: "6px", display: "grid", gap: "6px" }}>
+          ${phase2Exams.map(ex => html`<div key=${ex.id} style=${{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style=${{ fontSize: "0.9rem" }}>${ex.name}</span>
+            <div style=${{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <span style=${{ fontSize: "0.8rem", color: "var(--mute)" }}>পূর্ণমান:</span>
+              <input type="tel" inputMode="numeric" value=${ex.fullMarks}
+                onInput=${e => updateExamMarks(ex.id, e.target.value)}
+                style=${{ width: "55px", padding: "5px 6px", textAlign: "center", background: "#fff", fontWeight: 600 }} />
+            </div>
+          </div>`)}
+        </div>
+      </div>
+
+      <div style=${{ background: "var(--bg)", padding: "10px 12px", borderRadius: "8px" }}>
+        <b style=${{ color: "var(--acc)", fontSize: "0.95rem" }}>✦ ৩য় পর্যায়</b>
+        <div style=${{ marginTop: "6px", display: "grid", gap: "6px" }}>
+          ${phase3Exams.map(ex => html`<div key=${ex.id} style=${{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style=${{ fontSize: "0.9rem" }}>${ex.name}</span>
+            <div style=${{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <span style=${{ fontSize: "0.8rem", color: "var(--mute)" }}>পূর্ণমান:</span>
+              <input type="tel" inputMode="numeric" value=${ex.fullMarks}
+                onInput=${e => updateExamMarks(ex.id, e.target.value)}
+                style=${{ width: "55px", padding: "5px 6px", textAlign: "center", background: "#fff", fontWeight: 600 }} />
+            </div>
+          </div>`)}
+        </div>
+      </div>
     </div>
 
     <div class="card" style=${{ marginBottom: "16px" }}>

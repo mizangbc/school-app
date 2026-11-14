@@ -1,4 +1,5 @@
-import { Home } from "./pages.js?v=9";
+import { Home } from "./pages.js?v=11";
+import { PublicResultSearch } from "./results.js?v=11";
 import React, { useState, useEffect } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
@@ -41,7 +42,7 @@ function Field({ label, ...p }) {
   return html`<label>${label}<input ...${p} /></label>`;
 }
 
-function Login() {
+function Login({ onOpenPublicSearch }) {
   const [mobile, setMobile] = useState(""), [pw, setPw] = useState("");
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
   async function go(e) {
@@ -52,12 +53,22 @@ function Login() {
     try { await signInWithEmailAndPassword(auth, toEmail(m), pw); }
     catch (x) { setErr(msg(x)); setBusy(false); }
   }
-  return html`<form class="card" onSubmit=${go}>
-    <${Field} label="মোবাইল নম্বর" type="tel" inputMode="numeric" value=${mobile} onInput=${e => setMobile(e.target.value)} autoComplete="username" />
-    <${Field} label="পাসওয়ার্ড" type="password" value=${pw} onInput=${e => setPw(e.target.value)} autoComplete="current-password" />
-    ${err && html`<p class="err">${err}</p>`}
-    <button disabled=${busy}>${busy ? "অপেক্ষা করুন…" : "লগইন করুন"}</button>
-  </form>`;
+  return html`<div>
+    <form class="card" onSubmit=${go}>
+      <h3 style=${{ margin: "0 0 12px", fontSize: "1.1rem", textAlign: "center" }}>শিক্ষক ও অ্যাডমিন লগইন</h3>
+      <${Field} label="মোবাইল নম্বর" type="tel" inputMode="numeric" value=${mobile} onInput=${e => setMobile(e.target.value)} autoComplete="username" />
+      <${Field} label="পাসওয়ার্ড" type="password" value=${pw} onInput=${e => setPw(e.target.value)} autoComplete="current-password" />
+      ${err && html`<p class="err">${err}</p>`}
+      <button disabled=${busy}>${busy ? "অপেক্ষা করুন…" : "লগইন করুন"}</button>
+    </form>
+
+    <div style=${{ textAlign: "center", marginTop: "16px" }}>
+      <button type="button" class="ghost" onClick=${onOpenPublicSearch}
+        style=${{ width: "100%", padding: "12px", borderColor: "var(--acc)", color: "var(--acc)", fontWeight: 700, fontSize: "0.95rem", background: "var(--acc2)" }}>
+        🔍 শিক্ষার্থী ও অভিভাবক ফলাফল অনুসন্ধান
+      </button>
+    </div>
+  </div>`;
 }
 
 // প্রথমবার একবারই চলবে: প্রধান অ্যাডমিন তৈরি
@@ -111,6 +122,8 @@ function NoAccess() {
 
 function App() {
   const [state, setState] = useState({ loading: true });
+  const [publicSearch, setPublicSearch] = useState(false);
+
   useEffect(() => onAuthStateChanged(auth, async user => {
     setState({ loading: true });
     try {
@@ -130,9 +143,10 @@ function App() {
 
   if (state.loading) return html`<p class="sub">লোড হচ্ছে…</p>`;
   return html`<div>
-    ${state.screen !== "home" && html`<div class="brand">স্কুল ব্যবস্থাপনা</div>
+    ${state.screen !== "home" && !publicSearch && html`<div class="brand">স্কুল ব্যবস্থাপনা</div>
       <p class="sub">S. M. Model Govt. Primary School</p>`}
-    ${state.screen === "login" && html`<${Login} />`}
+    ${state.screen === "login" && publicSearch && html`<${PublicResultSearch} onBack=${() => setPublicSearch(false)} />`}
+    ${state.screen === "login" && !publicSearch && html`<${Login} onOpenPublicSearch=${() => setPublicSearch(true)} />`}
     ${state.screen === "setup" && html`<${FirstSetup} />`}
     ${state.screen === "home" && html`<${Home} profile=${state.profile} />`}
     ${state.screen === "noaccess" && html`<${NoAccess} />`}
