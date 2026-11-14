@@ -2,10 +2,10 @@ import React, { useState } from "https://esm.sh/react@18.3.1";
 import htm from "https://esm.sh/htm@3.1.1";
 import { auth } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { Structure } from "./structure.js";
-import { Students } from "./students.js";
-import { Teachers, MyAssignments } from "./teachers.js";
-import { Exams } from "./exams.js";
+import { Structure } from "./structure.js?v=3";
+import { Students } from "./students.js?v=3";
+import { Teachers, MyAssignments } from "./teachers.js?v=3";
+import { Exams } from "./exams.js?v=3";
 
 const html = htm.bind(React.createElement);
 

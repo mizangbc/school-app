@@ -94,9 +94,9 @@ export function Exams() {
     const grades = [...config.grading];
     grades.push({
       grade: "",
-      gpa: 0.0,
-      min: 0,
-      max: 100,
+      gpa: "0.0",
+      min: "",
+      max: "",
       remark: ""
     });
     setConfig({ ...config, grading: grades });
@@ -112,7 +112,7 @@ export function Exams() {
   }
 
   function applyPreset(preset) {
-    setConfig({ ...config, grading: preset });
+    setConfig({ ...config, grading: preset.map(g => ({ ...g })) });
   }
 
   function updateDisplay(field, val) {
@@ -133,28 +133,45 @@ export function Exams() {
     }
 
     // ধারাবাহিক ও লিখিত অনুপাত যাচাই
-    const totalRatio = (config.assessmentRatio.continuous || 0) + (config.assessmentRatio.written || 0);
+    const totalRatio = (parseInt(digits(config.assessmentRatio.continuous), 10) || 0) +
+                       (parseInt(digits(config.assessmentRatio.written), 10) || 0);
     if (totalRatio !== 100) {
       return setErr(`ধারাবাহিক ও লিখিত মূল্যায়নের যোগফল ১০০% হতে হবে।`);
     }
 
-    // গ্রেডিং তালিকা যাচাই
+    // গ্রেডিং তালিকা প্রসেস ও যাচাই
+    const cleanedGrading = [];
     for (let i = 0; i < config.grading.length; i++) {
       const g = config.grading[i];
-      if (!String(g.grade || "").trim()) {
+      const gradeName = String(g.grade || "").trim();
+      if (!gradeName) {
         return setErr(`ক্রমিক ${toBn(i + 1)} গ্রেডের নাম বা শিরোনাম ফাঁকা রাখা যাবে না।`);
       }
-      if (g.min > g.max) {
-        return setErr(`"${g.grade}" গ্রেডে সর্বনিম্ন নম্বর (${toBn(g.min)}) সর্বোচ্চ নম্বরের (${toBn(g.max)}) চেয়ে বড় হতে পারে না।`);
+      const minVal = parseInt(digits(g.min), 10);
+      const maxVal = parseInt(digits(g.max), 10);
+      if (isNaN(minVal) || isNaN(maxVal)) {
+        return setErr(`"${gradeName}" গ্রেডের নম্বর পরিসীমা সঠিকভাবে লিখুন।`);
       }
+      if (minVal > maxVal) {
+        return setErr(`"${gradeName}" গ্রেডে সর্বনিম্ন নম্বর (${toBn(minVal)}) সর্বোচ্চ নম্বরের (${toBn(maxVal)}) চেয়ে বড় হতে পারে না।`);
+      }
+      cleanedGrading.push({
+        grade: gradeName,
+        gpa: parseFloat(bn2en(g.gpa)) || 0.0,
+        min: minVal,
+        max: maxVal,
+        remark: String(g.remark || "").trim()
+      });
     }
 
     setBusy(true);
     try {
       await setDoc(doc(db, "config", "exams"), {
         ...config,
+        grading: cleanedGrading,
         updatedAt: serverTimestamp()
       });
+      setConfig({ ...config, grading: cleanedGrading });
       setOkMsg("পরীক্ষার সেটিং সফলভাবে সংরক্ষণ করা হয়েছে।");
     } catch (ex) {
       console.error(ex);
@@ -185,7 +202,7 @@ export function Exams() {
         </div>
         <div style=${{ flex: 1, display: "flex", alignItems: "center", gap: "4px" }}>
           <input type="tel" inputMode="numeric" value=${t.weight}
-            onInput=${e => updateTerminal(i, "weight", parseInt(digits(e.target.value), 10) || 0)}
+            onInput=${e => updateTerminal(i, "weight", e.target.value)}
             style=${{ padding: "6px 8px", textAlign: "center" }} />
           <span>%</span>
         </div>
@@ -233,7 +250,7 @@ export function Exams() {
       </div>
 
       <p class="sub" style=${{ margin: "0 0 10px", fontSize: "0.85rem" }}>
-        প্রয়োজনে গ্রেডের নাম (যেমন A+ বা অতি উত্তম), পয়েন্ট ও নম্বরের রেঞ্জ পরিবর্তন করুন:
+        এখানে সরাসরি ক্লিক করে গ্রেডের নাম (যেমন A+ বা অতি উত্তম), পয়েন্ট এবং কোন নম্বর থেকে কোন নম্বর পর্যন্ত তা এডিট করুন:
       </p>
 
       <!-- দ্রুত প্রিসেট বোতাম -->
@@ -255,18 +272,18 @@ export function Exams() {
         }}>
           <div style=${{ display: "flex", gap: "8px", alignItems: "center" }}>
             <div style=${{ flex: 2 }}>
-              <label style=${{ margin: "0 0 3px", fontSize: "0.78rem", color: "var(--mute)" }}>গ্রেড / শিরোনাম</label>
+              <label style=${{ margin: "0 0 3px", fontSize: "0.78rem", color: "var(--mute)" }}>গ্রেডের নাম / সূচক</label>
               <input value=${g.grade} placeholder="যেমন: A+ বা অতি উত্তম"
                 onInput=${e => updateGrade(i, "grade", e.target.value)}
-                style=${{ padding: "6px 8px", fontWeight: 600, background: "#fff" }} />
+                style=${{ padding: "8px 10px", fontWeight: 600, background: "#fff" }} />
             </div>
             <div style=${{ flex: 1 }}>
               <label style=${{ margin: "0 0 3px", fontSize: "0.78rem", color: "var(--mute)" }}>পয়েন্ট (GPA)</label>
-              <input type="number" step="0.1" value=${g.gpa}
-                onInput=${e => updateGrade(i, "gpa", parseFloat(bn2en(e.target.value)) || 0)}
-                style=${{ padding: "6px 8px", textAlign: "center", background: "#fff" }} />
+              <input type="text" value=${g.gpa}
+                onInput=${e => updateGrade(i, "gpa", e.target.value)}
+                style=${{ padding: "8px 10px", textAlign: "center", background: "#fff" }} />
             </div>
-            <button type="button" class="danger" style=${{ width: "auto", padding: "6px 10px", marginTop: "16px" }}
+            <button type="button" class="danger" style=${{ width: "auto", padding: "6px 12px", marginTop: "16px", fontSize: "1.2rem", lineHeight: 1 }}
               onClick=${() => removeGrade(i)} title="এই গ্রেড বাদ দিন">×</button>
           </div>
 
@@ -274,20 +291,20 @@ export function Exams() {
             <div style=${{ flex: 1 }}>
               <label style=${{ margin: "0 0 3px", fontSize: "0.78rem", color: "var(--mute)" }}>নম্বর পরিসীমা (%)</label>
               <div style=${{ display: "flex", alignItems: "center", gap: "4px" }}>
-                <input type="tel" inputMode="numeric" value=${g.min}
-                  onInput=${e => updateGrade(i, "min", parseInt(digits(e.target.value), 10) || 0)}
-                  style=${{ padding: "6px 6px", textAlign: "center", background: "#fff", flex: 1 }} />
+                <input type="tel" inputMode="numeric" value=${g.min} placeholder="শুরু"
+                  onInput=${e => updateGrade(i, "min", e.target.value)}
+                  style=${{ padding: "8px 6px", textAlign: "center", background: "#fff", flex: 1 }} />
                 <span style=${{ fontSize: "0.85rem", color: "var(--mute)" }}>থেকে</span>
-                <input type="tel" inputMode="numeric" value=${g.max}
-                  onInput=${e => updateGrade(i, "max", parseInt(digits(e.target.value), 10) || 0)}
-                  style=${{ padding: "6px 6px", textAlign: "center", background: "#fff", flex: 1 }} />
+                <input type="tel" inputMode="numeric" value=${g.max} placeholder="শেষ"
+                  onInput=${e => updateGrade(i, "max", e.target.value)}
+                  style=${{ padding: "8px 6px", textAlign: "center", background: "#fff", flex: 1 }} />
               </div>
             </div>
             <div style=${{ flex: 1 }}>
               <label style=${{ margin: "0 0 3px", fontSize: "0.78rem", color: "var(--mute)" }}>মন্তব্য (ঐচ্ছিক)</label>
               <input value=${g.remark || ""} placeholder="যেমন: উত্তম"
                 onInput=${e => updateGrade(i, "remark", e.target.value)}
-                style=${{ padding: "6px 8px", background: "#fff" }} />
+                style=${{ padding: "8px 10px", background: "#fff" }} />
             </div>
           </div>
         </div>`)}
