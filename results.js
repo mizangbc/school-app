@@ -6,12 +6,29 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_ANNUAL_WEIGHTS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, LETTER_GRADES
-} from "./exams.js?v=20";
+} from "./exams.js?v=21";
 
 const html = htm.bind(React.createElement);
 
-const toBn = n => String(n ?? "").replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
 const bn2en = s => String(s || "").replace(/[০-৯]/g, d => "০১২৩৪৫৬৭৮৯".indexOf(d));
+
+export const toBn = n => {
+  if (n == null || n === "" || n === "-") return n ?? "";
+  if (typeof n === "number") {
+    if (isNaN(n)) return "-";
+    // দশমিকের পর এক ঘর পর্যন্ত সীমাবদ্ধ রাখা (যেমন 349.40000000000003 -> 349.4, 85 -> 85)
+    n = Number(n.toFixed(1));
+  } else if (typeof n === "string") {
+    const enStr = String(n).trim().replace(/[০-৯]/g, d => "০১২৩৪৫৬৭৮৯".indexOf(d));
+    if (enStr.includes(".") && /^[-+]?\d*\.?\d+$/.test(enStr)) {
+      const num = parseFloat(enStr);
+      if (!isNaN(num)) {
+        n = Number(num.toFixed(1));
+      }
+    }
+  }
+  return String(n).replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
+};
 
 export function toBnRank(n) {
   if (!n) return "-";
@@ -101,19 +118,19 @@ function SubjectRegisterView({ students, marksDocs, curClass, section, subject, 
       t1_ca2: r1.ca2 ?? "",
       t1_cont: r1.absent ? "অনুপস্থিত" : (r1.continuous ?? ""),
       t1_term: r1.absent ? "অনুপস্থিত" : (r1.terminal ?? ""),
-      t1_tot: r1.absent ? "অনুপস্থিত" : (r1.total != null && r1.total !== "" ? r1.total : ((parseFloat(r1.continuous) || 0) + (parseFloat(r1.terminal) || 0))),
+      t1_tot: r1.absent ? "অনুপস্থিত" : (r1.total != null && r1.total !== "" ? Math.round((parseFloat(r1.total) || 0) * 10) / 10 : Math.round(((parseFloat(r1.continuous) || 0) + (parseFloat(r1.terminal) || 0)) * 10) / 10),
       // ২য় প্রান্তিক
       t2_ca1: r2.ca1 ?? "",
       t2_ca2: r2.ca2 ?? "",
       t2_cont: r2.absent ? "অনুপস্থিত" : (r2.continuous ?? ""),
       t2_term: r2.absent ? "অনুপস্থিত" : (r2.terminal ?? ""),
-      t2_tot: r2.absent ? "অনুপস্থিত" : (r2.total != null && r2.total !== "" ? r2.total : ((parseFloat(r2.continuous) || 0) + (parseFloat(r2.terminal) || 0))),
+      t2_tot: r2.absent ? "অনুপস্থিত" : (r2.total != null && r2.total !== "" ? Math.round((parseFloat(r2.total) || 0) * 10) / 10 : Math.round(((parseFloat(r2.continuous) || 0) + (parseFloat(r2.terminal) || 0)) * 10) / 10),
       // ৩য় প্রান্তিক
       t3_ca1: r3.ca1 ?? "",
       t3_ca2: r3.ca2 ?? "",
       t3_cont: r3.absent ? "অনুপস্থিত" : (r3.continuous ?? ""),
       t3_term: r3.absent ? "অনুপস্থিত" : (r3.terminal ?? ""),
-      t3_tot: r3.absent ? "অনুপস্থিত" : (r3.total != null && r3.total !== "" ? r3.total : ((parseFloat(r3.continuous) || 0) + (parseFloat(r3.terminal) || 0))),
+      t3_tot: r3.absent ? "অনুপস্থিত" : (r3.total != null && r3.total !== "" ? Math.round((parseFloat(r3.total) || 0) * 10) / 10 : Math.round(((parseFloat(r3.continuous) || 0) + (parseFloat(r3.terminal) || 0)) * 10) / 10),
       // চূড়ান্ত
       annualAvg,
       subjectGrade,
@@ -383,6 +400,7 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
       return res;
     }
 
+    res.totalScore = Math.round(res.totalScore * 10) / 10;
     const avgPct = res.totalFull > 0 ? (res.totalScore / res.totalFull) * 100 : 0;
     res.avgPct = Math.round(avgPct * 10) / 10;
     const overallGInfo = getGradeInfo(res.avgPct, grading);
@@ -433,7 +451,8 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
       const subData = [];
       subjects.forEach(sub => {
         const s = r.subjects[sub];
-        subData.push(s?.absent ? "অনুপস্থিত" : (s?.score ?? 0));
+        const sVal = s?.absent ? "অনুপস্থিত" : (s?.score != null && typeof s.score === "number" ? Math.round(s.score * 10) / 10 : (s?.score ?? 0));
+        subData.push(sVal);
         subData.push(`"${s?.grade || "-"}"`);
       });
       return [
@@ -441,8 +460,8 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
         `"${r.name}"`,
         r.sid,
         ...subData,
-        r.totalScore,
-        r.avgPct,
+        typeof r.totalScore === "number" ? Math.round(r.totalScore * 10) / 10 : r.totalScore,
+        typeof r.avgPct === "number" ? Math.round(r.avgPct * 10) / 10 : r.avgPct,
         `"${r.grade}"`,
         ...(showGpa ? [r.gpa.toFixed(2)] : []),
         `"${r.rankBn || "-"}"`,
@@ -660,6 +679,11 @@ export function OfficialLandscapeMarksheet({
       subjectGrade
     };
   });
+
+  grandT1 = Math.round(grandT1 * 10) / 10;
+  grandT2 = Math.round(grandT2 * 10) / 10;
+  grandT3 = Math.round(grandT3 * 10) / 10;
+  grandAnnual = Math.round(grandAnnual * 10) / 10;
 
   const stuOverall = allSubjectAverages?.[student.sid] || {
     grade: student.grade || "-",

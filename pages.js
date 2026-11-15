@@ -3,16 +3,29 @@ import htm from "https://esm.sh/htm@3.1.1";
 import { auth, db } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { Structure } from "./structure.js?v=20";
-import { Students } from "./students.js?v=20";
-import { Teachers, MyAssignments } from "./teachers.js?v=20";
-import { Exams } from "./exams.js?v=20";
-import { MarksEntry, Verification } from "./marks.js?v=20";
-import { ResultsView } from "./results.js?v=20";
-import { BackupAndPromotion } from "./backup.js?v=20";
+import { Structure } from "./structure.js?v=21";
+import { Students } from "./students.js?v=21";
+import { Teachers, MyAssignments } from "./teachers.js?v=21";
+import { Exams } from "./exams.js?v=21";
+import { MarksEntry, Verification } from "./marks.js?v=21";
+import { ResultsView } from "./results.js?v=21";
+import { BackupAndPromotion } from "./backup.js?v=21";
 
 const html = htm.bind(React.createElement);
-const toBn = n => String(n ?? "").replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
+const toBn = n => {
+  if (n == null || n === "" || n === "-") return n ?? "";
+  if (typeof n === "number") {
+    if (isNaN(n)) return "-";
+    n = Number(n.toFixed(1));
+  } else if (typeof n === "string") {
+    const enStr = String(n).trim().replace(/[০-৯]/g, d => "০১২৩৪৫৬৭৮৯".indexOf(d));
+    if (enStr.includes(".") && /^[-+]?\d*\.?\d+$/.test(enStr)) {
+      const num = parseFloat(enStr);
+      if (!isNaN(num)) n = Number(num.toFixed(1));
+    }
+  }
+  return String(n).replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
+};
 
 const st = document.createElement("style");
 st.textContent = `

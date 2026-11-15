@@ -6,11 +6,24 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, defaultExamConfig
-} from "./exams.js?v=20";
+} from "./exams.js?v=21";
 
 const html = htm.bind(React.createElement);
 
-const toBn = n => String(n ?? "").replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
+const toBn = n => {
+  if (n == null || n === "" || n === "-") return n ?? "";
+  if (typeof n === "number") {
+    if (isNaN(n)) return "-";
+    n = Number(n.toFixed(1));
+  } else if (typeof n === "string") {
+    const enStr = String(n).trim().replace(/[০-৯]/g, d => "০১২৩৪৫৬৭৮৯".indexOf(d));
+    if (enStr.includes(".") && /^[-+]?\d*\.?\d+$/.test(enStr)) {
+      const num = parseFloat(enStr);
+      if (!isNaN(num)) n = Number(num.toFixed(1));
+    }
+  }
+  return String(n).replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
+};
 const bn2en = s => String(s || "").replace(/[০-৯]/g, d => "০১২৩৪৫৬৭৮৯".indexOf(d));
 
 function calculateGrade(percent, gradingScale = DESCRIPTIVE_GRADES) {
