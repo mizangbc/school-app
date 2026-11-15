@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_ANNUAL_WEIGHTS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, LETTER_GRADES
-} from "./exams.js?v=18";
+} from "./exams.js?v=19";
 
 const html = htm.bind(React.createElement);
 
@@ -56,27 +56,40 @@ function SubjectRegisterView({ students, marksDocs, curClass, section, subject, 
   const contFull = term1Doc?.contFull || 30;
   const termFull = term1Doc?.termFull || 70;
 
-  // প্রতিটি শিক্ষার্থীর ১৭-কলামের সারি তৈরি
+  // প্রতিটি শিক্ষার্থীর ২০-কলামের সারি তৈরি
   const rows = students.map(s => {
     const r1 = t1Records[s.sid] || {};
     const r2 = t2Records[s.sid] || {};
     const r3 = t3Records[s.sid] || {};
 
-    const t1Tot = r1.absent ? 0 : (parseFloat(r1.total) || 0);
-    const t2Tot = r2.absent ? 0 : (parseFloat(r2.total) || 0);
-    const t3Tot = r3.absent ? 0 : (parseFloat(r3.total) || 0);
+    const hasR1 = r1.absent || (r1.total != null && r1.total !== "");
+    const hasR2 = r2.absent || (r2.total != null && r2.total !== "");
+    const hasR3 = r3.absent || (r3.total != null && r3.total !== "");
 
-    // প্রান্তিকের গড় নম্বর (ওয়েটেজ অনুযায়ী)
-    const annualAvg = Math.round(((t1Tot * w1) + (t2Tot * w2) + (t3Tot * w3)) * 10) / 10;
-    const isAnyAbsent = r1.absent || r2.absent || r3.absent;
+    // ১ম, ২য় ও ৩য়—তিনটি মূল্যায়ন সম্পন্ন হওয়ার পরেই বার্ষিক গড় হবে
+    const isAllThreeDone = !!(term1Doc && term2Doc && term3Doc && hasR1 && hasR2 && hasR3);
 
-    // বিষয় গ্রেড
-    const subGradeInfo = getGradeInfo(annualAvg, grading);
-    const subjectGrade = isAnyAbsent && annualAvg === 0 ? "অগ্রগতি প্রয়োজন" : subGradeInfo.grade;
+    let annualAvg = "-";
+    let subjectGrade = "-";
+    let overallGrade = "-";
 
-    // সমন্বিত গ্রেড (শিক্ষার্থীর সকল বিষয়ের সার্বিক গড় থেকে প্রাপ্ত গ্রেড)
-    const stuOverall = allSubjectAverages[s.sid] || {};
-    const overallGrade = stuOverall.grade || "-";
+    if (isAllThreeDone) {
+      const t1Tot = r1.absent ? 0 : (parseFloat(r1.total) || 0);
+      const t2Tot = r2.absent ? 0 : (parseFloat(r2.total) || 0);
+      const t3Tot = r3.absent ? 0 : (parseFloat(r3.total) || 0);
+
+      // প্রান্তিকের গড় নম্বর (ওয়েটেজ অনুযায়ী)
+      annualAvg = Math.round(((t1Tot * w1) + (t2Tot * w2) + (t3Tot * w3)) * 10) / 10;
+      const isAnyAbsent = r1.absent || r2.absent || r3.absent;
+
+      // বিষয় গ্রেড
+      const subGradeInfo = getGradeInfo(annualAvg, grading);
+      subjectGrade = isAnyAbsent && annualAvg === 0 ? "অগ্রগতি প্রয়োজন" : subGradeInfo.grade;
+
+      // সমন্বিত গ্রেড
+      const stuOverall = allSubjectAverages[s.sid] || {};
+      overallGrade = stuOverall.grade || "-";
+    }
 
     return {
       roll: s.roll,
@@ -277,6 +290,11 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
     marksMap[`${d.termId}_${d.subject}`] = d;
   });
 
+  const hasT1 = (marksDocs || []).some(d => d.termId === "term_1");
+  const hasT2 = (marksDocs || []).some(d => d.termId === "term_2");
+  const hasT3 = (marksDocs || []).some(d => d.termId === "term_3");
+  const isAnnualReady = hasT1 && hasT2 && hasT3;
+
   const studentResults = students.map(s => {
     const res = {
       sid: s.sid,
@@ -288,8 +306,22 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
       pass: true
     };
 
+    if (termOption === "annual" && !isAnnualReady) {
+      subjects.forEach(sub => {
+        res.subjects[sub] = { score: "-", absent: false, grade: "-", gpa: 0 };
+      });
+      res.totalScore = "-";
+      res.avgPct = "-";
+      res.grade = "-";
+      res.gpa = 0;
+      res.rankBn = "-";
+      res.pass = false;
+      return res;
+    }
+
     let totalGpa = 0;
     let subCount = 0;
+    let studentAnnualIncomplete = false;
 
     subjects.forEach(sub => {
       let subScore = 0;
@@ -299,6 +331,16 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
         const m1 = marksMap[`term_1_${sub}`]?.records?.[s.sid];
         const m2 = marksMap[`term_2_${sub}`]?.records?.[s.sid];
         const m3 = marksMap[`term_3_${sub}`]?.records?.[s.sid];
+
+        const hasM1 = m1 && (m1.absent || (m1.total != null && m1.total !== ""));
+        const hasM2 = m2 && (m2.absent || (m2.total != null && m2.total !== ""));
+        const hasM3 = m3 && (m3.absent || (m3.total != null && m3.total !== ""));
+
+        if (!hasM1 || !hasM2 || !hasM3) {
+          studentAnnualIncomplete = true;
+          res.subjects[sub] = { score: "-", absent: false, grade: "-", gpa: 0 };
+          return;
+        }
 
         const s1 = m1 && !m1.absent ? (parseFloat(m1.total) || 0) : 0;
         const s2 = m2 && !m2.absent ? (parseFloat(m2.total) || 0) : 0;
@@ -329,6 +371,16 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
       totalGpa += gInfo.gpa;
       subCount++;
     });
+
+    if (studentAnnualIncomplete) {
+      res.totalScore = "-";
+      res.avgPct = "-";
+      res.grade = "-";
+      res.gpa = 0;
+      res.rankBn = "-";
+      res.pass = false;
+      return res;
+    }
 
     const avgPct = res.totalFull > 0 ? (res.totalScore / res.totalFull) * 100 : 0;
     res.avgPct = Math.round(avgPct * 10) / 10;
@@ -437,6 +489,13 @@ function ConsolidatedTabulationView({ students, marksDocs, curClass, section, su
       </button>`}
     </div>
 
+    ${termOption === "annual" && !isAnnualReady && html`<div class="card no-print" style=${{ background: "#fff8e1", borderLeft: "4px solid #f57f17", padding: "10px 14px", marginBottom: "14px" }}>
+      <b style=${{ color: "#e65100" }}>ℹ️ বার্ষিক সমন্বিত ফলাফল এখনো প্রস্তুত হয়নি</b>
+      <p style=${{ margin: "4px 0 0", fontSize: "0.86rem", color: "#555" }}>
+        ১ম প্রান্তিক, ২য় প্রান্তিক ও ৩য় প্রান্তিক—তিনটি মূল্যায়নের নম্বর সম্পন্ন হওয়ার পর বার্ষিক গড় ও ফলাফল প্রকাশিত হবে। নির্দিষ্ট প্রান্তিকের ফলাফল দেখতে ওপরের ড্রপডাউন থেকে ১ম, ২য় বা ৩য় প্রান্তিক নির্বাচন করুন।
+      </p>
+    </div>`}
+
     <div style=${{ overflowX: "auto" }}>
       <table style=${{ width: "100%", borderCollapse: "collapse", minWidth: "650px", fontSize: "0.85rem" }}>
         <thead>
@@ -541,6 +600,7 @@ export function OfficialLandscapeMarksheet({
 
   let grandT1 = 0, grandT2 = 0, grandT3 = 0, grandAnnual = 0;
   const totalPossible = subjects.length * 100;
+  let allThreeTermsCompleted = true;
 
   const rows = subjects.map(sub => {
     const d1 = mDocsMap[`term_1_${sub}`];
@@ -550,6 +610,13 @@ export function OfficialLandscapeMarksheet({
     const r1 = d1?.records?.[student.sid];
     const r2 = d2?.records?.[student.sid];
     const r3 = d3?.records?.[student.sid];
+
+    const hasR1 = r1 && (r1.absent || (r1.total !== "" && r1.total != null));
+    const hasR2 = r2 && (r2.absent || (r2.total !== "" && r2.total != null));
+    const hasR3 = r3 && (r3.absent || (r3.total !== "" && r3.total != null));
+
+    const isSubAllDone = !!(d1 && d2 && d3 && hasR1 && hasR2 && hasR3);
+    if (!isSubAllDone) allThreeTermsCompleted = false;
 
     const t1_cont = r1 ? (r1.absent ? "অনুপস্থিত" : (r1.continuous !== "" ? toBn(r1.continuous) : "-")) : "-";
     const t1_term = r1 ? (r1.absent ? "অনুপস্থিত" : (r1.terminal !== "" ? toBn(r1.terminal) : "-")) : "-";
@@ -571,22 +638,24 @@ export function OfficialLandscapeMarksheet({
     grandT2 += s2;
     grandT3 += s3;
 
-    let annualAvg = Math.round(((s1 * w1) + (s2 * w2) + (s3 * w3)) * 10) / 10;
-    if (student.subjects?.[sub]?.score != null && (!r1 && !r2 && !r3)) {
-      annualAvg = student.subjects[sub].score;
-    }
-    grandAnnual += annualAvg;
+    let annualAvg = "-";
+    let subjectGrade = "-";
 
-    const isAnyAbsent = (r1 && r1.absent) || (r2 && r2.absent) || (r3 && r3.absent);
-    const subGradeInfo = getGradeInfo(annualAvg, grading);
-    const subjectGrade = (isAnyAbsent && annualAvg === 0) ? "অগ্রগতি প্রয়োজন" : subGradeInfo.grade;
+    if (isSubAllDone) {
+      annualAvg = Math.round(((s1 * w1) + (s2 * w2) + (s3 * w3)) * 10) / 10;
+      grandAnnual += annualAvg;
+
+      const isAnyAbsent = (r1 && r1.absent) || (r2 && r2.absent) || (r3 && r3.absent);
+      const subGradeInfo = getGradeInfo(annualAvg, grading);
+      subjectGrade = (isAnyAbsent && annualAvg === 0) ? "অগ্রগতি প্রয়োজন" : subGradeInfo.grade;
+    }
 
     return {
       sub,
       t1_cont, t1_term, t1_tot,
       t2_cont, t2_term, t2_tot,
       t3_cont, t3_term, t3_tot,
-      annualAvg: toBn(annualAvg),
+      annualAvg: annualAvg === "-" ? "-" : toBn(annualAvg),
       subjectGrade
     };
   });
@@ -713,10 +782,10 @@ export function OfficialLandscapeMarksheet({
               textAlign: "center",
               fontWeight: 800,
               fontSize: "1.05rem",
-              color: stuOverall.grade === "অগ্রগতি প্রয়োজন" ? "var(--err)" : "#1f7a5a",
+              color: (allThreeTermsCompleted && stuOverall.grade === "অগ্রগতি প্রয়োজন") ? "var(--err)" : "#1f7a5a",
               background: "#fff"
             }}>
-              ${stuOverall.grade}
+              ${allThreeTermsCompleted ? stuOverall.grade : "-"}
             </td>` : null}
           </tr>`)}
         </tbody>
@@ -732,9 +801,9 @@ export function OfficialLandscapeMarksheet({
             <td colSpan="2" style=${{ border: "1px solid #333", padding: "3px" }}>৩য় প্রান্তিকে মোট:</td>
             <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800 }}>${toBn(grandT3)}</td>
 
-            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800 }}>${toBn(grandAnnual)}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800 }}>${allThreeTermsCompleted ? toBn(grandAnnual) : "-"}</td>
             <td style=${{ border: "1px solid #333", padding: "3px" }}>-</td>
-            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800, color: "#1f7a5a" }}>মেধা: ${stuOverall.rankBn || student.rankBn || "-"}</td>
+            <td style=${{ border: "1px solid #333", padding: "3px", fontWeight: 800, color: "#1f7a5a" }}>${allThreeTermsCompleted ? `মেধা: ${stuOverall.rankBn || student.rankBn || "-"}` : "-"}</td>
           </tr>
         </tfoot>
       </table>
@@ -934,9 +1003,28 @@ export function ResultsView({ profile }) {
   }, [classId, section]);
 
   // শিক্ষার্থীর সকল বিষয়ের গড় হিসাব (সমন্বিত গ্রেড নির্ধারণের জন্য)
+  // প্রথম, দ্বিতীয় ও তৃতীয়—তিনটি মূল্যায়ন সম্পন্ন হওয়ার পরেই বার্ষিক গড় হবে
   const allSubjectAverages = useMemo(() => {
     const map = {};
     if (students.length === 0 || subjects.length === 0) return map;
+
+    const hasT1 = marksDocs.some(d => d.termId === "term_1");
+    const hasT2 = marksDocs.some(d => d.termId === "term_2");
+    const hasT3 = marksDocs.some(d => d.termId === "term_3");
+    const allTermsExist = hasT1 && hasT2 && hasT3;
+
+    if (!allTermsExist) {
+      students.forEach(s => {
+        map[s.sid] = {
+          total: 0,
+          avgPct: 0,
+          grade: "-",
+          rankBn: "-",
+          isComplete: false
+        };
+      });
+      return map;
+    }
 
     const grading = examConfig?.grading || DESCRIPTIVE_GRADES;
     const weights = examConfig?.annualWeights || DEFAULT_ANNUAL_WEIGHTS;
@@ -953,11 +1041,21 @@ export function ResultsView({ profile }) {
       let stuGrandTotal = 0;
       let totalFull = subjects.length * 100;
       let hasFail = false;
+      let stuAllDone = true;
 
       subjects.forEach(sub => {
         const m1 = mDocsByTermSub[`term_1_${sub}`]?.records?.[s.sid];
         const m2 = mDocsByTermSub[`term_2_${sub}`]?.records?.[s.sid];
         const m3 = mDocsByTermSub[`term_3_${sub}`]?.records?.[s.sid];
+
+        const hasM1 = m1 && (m1.absent || (m1.total != null && m1.total !== ""));
+        const hasM2 = m2 && (m2.absent || (m2.total != null && m2.total !== ""));
+        const hasM3 = m3 && (m3.absent || (m3.total != null && m3.total !== ""));
+
+        if (!hasM1 || !hasM2 || !hasM3) {
+          stuAllDone = false;
+          return;
+        }
 
         const s1 = m1 && !m1.absent ? (parseFloat(m1.total) || 0) : 0;
         const s2 = m2 && !m2.absent ? (parseFloat(m2.total) || 0) : 0;
@@ -971,13 +1069,30 @@ export function ResultsView({ profile }) {
         }
       });
 
+      if (!stuAllDone) {
+        map[s.sid] = {
+          total: 0,
+          avgPct: 0,
+          grade: "-",
+          rankBn: "-",
+          isComplete: false
+        };
+        return;
+      }
+
       const avgPct = totalFull > 0 ? (stuGrandTotal / totalFull) * 100 : 0;
       const gInfo = getGradeInfo(avgPct, grading);
       map[s.sid] = {
         total: Math.round(stuGrandTotal * 10) / 10,
         avgPct: Math.round(avgPct * 10) / 10,
-        grade: hasFail ? "অগ্রগতি প্রয়োজন" : gInfo.grade
+        grade: hasFail ? "অগ্রগতি প্রয়োজন" : gInfo.grade,
+        isComplete: true
       };
+    });
+
+    const completed = Object.entries(map).filter(([_, v]) => v.isComplete).sort((a, b) => b[1].total - a[1].total);
+    completed.forEach(([_, v], idx) => {
+      v.rankBn = toBnRank(idx + 1);
     });
 
     return map;
@@ -1272,6 +1387,17 @@ export function PublicResultSearch({ onBack }) {
 
       const mDocsMap = {};
       mList.forEach(d => { mDocsMap[`${d.termId}_${d.subject}`] = d; });
+
+      if (termId === "annual") {
+        const hasT1 = mList.some(d => d.termId === "term_1");
+        const hasT2 = mList.some(d => d.termId === "term_2");
+        const hasT3 = mList.some(d => d.termId === "term_3");
+        if (!hasT1 || !hasT2 || !hasT3) {
+          setErr("বার্ষিক সমন্বিত ফলাফল শুধুমাত্র ১ম, ২য় ও ৩য়—তিনটি মূল্যায়ন সম্পন্ন হওয়ার পরেই প্রস্তুত হয়। বর্তমানে সকল মূল্যায়ন ডাটাবেজে উপস্থিত নেই।");
+          setLoading(false);
+          return;
+        }
+      }
 
       const stuResult = {
         sid: st.sid,

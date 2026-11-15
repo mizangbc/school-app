@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, defaultExamConfig
-} from "./exams.js?v=18";
+} from "./exams.js?v=19";
 
 const html = htm.bind(React.createElement);
 
@@ -143,12 +143,85 @@ export function MarksEntry({ profile }) {
     loadMarksheet();
   }, [termId, classId, section, subject]);
 
-  // ইনপুট হ্যান্ডলার (ধারা ১, ধারা ২, ধারাবাহিক, সামষ্টিক)
+  // ইনপুট হ্যান্ডলার (ধারা ১, ধারা ২, ধারাবাহিক, সামষ্টিক) - নির্ধারিত পূর্ণমানের অতিরিক্ত নম্বর প্রতিরোধ
   function handleScoreChange(sid, field, val) {
     if (marksDoc && marksDoc.status === "approved") return;
     const cur = scores[sid] || { ca1: "", ca2: "", continuous: "", terminal: "", absent: false };
-    const updatedRec = { ...cur, [field]: val };
+    const stu = students.find(s => s.sid === sid);
+    const sIdx = students.findIndex(s => s.sid === sid);
 
+    const fieldLabels = {
+      ca1: "ধারা ১",
+      ca2: "ধারা ২",
+      continuous: "ধারাবাহিক মূল্যায়ন",
+      terminal: "সামষ্টিক মূল্যায়ন"
+    };
+
+    const maxLimits = {
+      ca1: 20,
+      ca2: 20,
+      continuous: contFull,
+      terminal: termFull
+    };
+
+    const maxAllowed = maxLimits[field] ?? 100;
+
+    // খালি করলে ফিল্ড ক্লিয়ার হবে
+    if (val === "" || val == null) {
+      if (err && err.startsWith("⚠️ সতর্কবার্তা")) setErr("");
+      const updatedRec = { ...cur, [field]: "" };
+      if (field === "ca1" || field === "ca2") {
+        const otherVal = field === "ca1" ? cur.ca2 : cur.ca1;
+        const vOther = parseFloat(bn2en(otherVal));
+        if (isNaN(vOther)) {
+          updatedRec.continuous = "";
+        } else {
+          const scaled = Math.round((vOther / 40) * contFull * 10) / 10;
+          updatedRec.continuous = String(scaled);
+        }
+      }
+      const cVal = parseFloat(bn2en(updatedRec.continuous)) || 0;
+      const tVal = parseFloat(bn2en(updatedRec.terminal)) || 0;
+      const total = Math.round((cVal + tVal) * 10) / 10;
+      updatedRec.total = total;
+      const pct = totalFull > 0 ? Math.round((total / totalFull) * 100 * 10) / 10 : 0;
+      updatedRec.pct = pct;
+      const grading = examConfig?.grading || DESCRIPTIVE_GRADES;
+      const { grade, gpa } = calculateGrade(pct, grading);
+      updatedRec.grade = (updatedRec.continuous === "" && updatedRec.terminal === "") ? "-" : grade;
+      updatedRec.gpa = gpa;
+      setScores({ ...scores, [sid]: updatedRec });
+      setSyncStatus("dirty");
+      return;
+    }
+
+    const num = parseFloat(bn2en(val));
+    if (isNaN(num)) {
+      setErr(`⚠️ সতর্কবার্তা: ${fieldLabels[field] || field}-এ শুধু সঠিক সংখ্যা লিখুন।`);
+      const el = document.getElementById(`input_${field}_${sIdx}`);
+      if (el) el.value = cur[field] || "";
+      return;
+    }
+
+    if (num < 0) {
+      setErr(`⚠️ সতর্কবার্তা: নম্বর ০-এর কম হতে পারবে না।`);
+      const el = document.getElementById(`input_${field}_${sIdx}`);
+      if (el) el.value = cur[field] || "";
+      return;
+    }
+
+    // নির্ধারিত পূর্ণমানের চেয়ে বেশি নম্বর দিলে আটকানো ও সতর্কবার্তা দেখানো
+    if (num > maxAllowed) {
+      setErr(`⚠️ সতর্কবার্তা: ${stu ? `রোল ${toBn(stu.roll)} (${stu.name}) — ` : ""}${fieldLabels[field] || field}-এ পূর্ণমান ${toBn(maxAllowed)}-এর বেশি নম্বর দেওয়া যাবে না! আপনি ${toBn(val)} লিখেছেন।`);
+      const el = document.getElementById(`input_${field}_${sIdx}`);
+      if (el) el.value = cur[field] || "";
+      return;
+    }
+
+    // ভ্যালিড নম্বর হলে আগের সতর্কবার্তা মুছে ফেলা
+    if (err && err.startsWith("⚠️ সতর্কবার্তা")) setErr("");
+
+    const updatedRec = { ...cur, [field]: val };
     const grading = examConfig?.grading || DESCRIPTIVE_GRADES;
 
     // ধারা মূ-১ বা ধারা মূ-২ পরিবর্তন করলে স্বয়ংক্রিয়ভাবে ধারাবাহিক নির্ণয়
@@ -161,7 +234,7 @@ export function MarksEntry({ profile }) {
       if (!isNaN(v1) || !isNaN(v2)) {
         const sum = (isNaN(v1) ? 0 : v1) + (isNaN(v2) ? 0 : v2);
         // ৪০ থেকে contFull এ রূপান্তর (যেমন ৩০ বা ৫০)
-        const scaled = Math.round((sum / 40) * contFull * 10) / 10;
+        const scaled = Math.min(contFull, Math.round((sum / 40) * contFull * 10) / 10);
         updatedRec.continuous = String(scaled);
       }
     }
@@ -169,7 +242,7 @@ export function MarksEntry({ profile }) {
     // মোট নম্বর গণনা: ধারাবাহিক + সামষ্টিক
     const cVal = parseFloat(bn2en(updatedRec.continuous)) || 0;
     const tVal = parseFloat(bn2en(updatedRec.terminal)) || 0;
-    const total = Math.round((cVal + tVal) * 10) / 10;
+    const total = Math.min(totalFull, Math.round((cVal + tVal) * 10) / 10);
     updatedRec.total = total;
 
     const pct = totalFull > 0 ? Math.round((total / totalFull) * 100 * 10) / 10 : 0;
@@ -253,6 +326,34 @@ export function MarksEntry({ profile }) {
   async function saveMarks(newStatus = "draft") {
     setErr("");
     setNote("");
+
+    // নির্ধারিত পূর্ণমানের চেয়ে বেশি নম্বর থাকলে সংরক্ষণ ও জমা আটকানো
+    for (const s of students) {
+      const rec = scores[s.sid];
+      if (!rec || rec.absent) continue;
+      const ca1Val = parseFloat(bn2en(rec.ca1));
+      const ca2Val = parseFloat(bn2en(rec.ca2));
+      const cVal = parseFloat(bn2en(rec.continuous));
+      const tVal = parseFloat(bn2en(rec.terminal));
+
+      if (!isNaN(ca1Val) && (ca1Val > 20 || ca1Val < 0)) {
+        setErr(`সংরক্ষণ করা যায়নি: রোল ${toBn(s.roll)} (${s.name})-এর ধারা ১ নম্বর (${toBn(rec.ca1)}) পূর্ণমান ২০-এর চেয়ে বেশি!`);
+        return;
+      }
+      if (!isNaN(ca2Val) && (ca2Val > 20 || ca2Val < 0)) {
+        setErr(`সংরক্ষণ করা যায়নি: রোল ${toBn(s.roll)} (${s.name})-এর ধারা ২ নম্বর (${toBn(rec.ca2)}) পূর্ণমান ২০-এর চেয়ে বেশি!`);
+        return;
+      }
+      if (!isNaN(cVal) && (cVal > contFull || cVal < 0)) {
+        setErr(`সংরক্ষণ করা যায়নি: রোল ${toBn(s.roll)} (${s.name})-এর ধারাবাহিক নম্বর (${toBn(rec.continuous)}) পূর্ণমান ${toBn(contFull)}-এর চেয়ে বেশি!`);
+        return;
+      }
+      if (!isNaN(tVal) && (tVal > termFull || tVal < 0)) {
+        setErr(`সংরক্ষণ করা যায়নি: রোল ${toBn(s.roll)} (${s.name})-এর সামষ্টিক নম্বর (${toBn(rec.terminal)}) পূর্ণমান ${toBn(termFull)}-এর চেয়ে বেশি!`);
+        return;
+      }
+    }
+
     setBusy(true);
     setSyncStatus("saving");
 
@@ -463,7 +564,7 @@ export function MarksEntry({ profile }) {
                 <div style=${{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(70px, 1fr))", gap: "6px", alignItems: "flex-end" }}>
                   <div>
                     <label style=${{ margin: "0 0 2px", fontSize: "0.72rem", color: "var(--mute)" }}>ধারা ১ (২০)</label>
-                    <input id=${`input_ca1_${idx}`} type="tel" inputMode="numeric" value=${rec.ca1} disabled=${isLocked || rec.absent}
+                    <input id=${`input_ca1_${idx}`} type="tel" inputMode="numeric" min="0" max="20" value=${rec.ca1} disabled=${isLocked || rec.absent}
                       placeholder="২০"
                       onInput=${e => handleScoreChange(s.sid, "ca1", e.target.value)}
                       onKeyDown=${e => handleKeyDown(e, idx, "ca1")}
@@ -473,7 +574,7 @@ export function MarksEntry({ profile }) {
 
                   <div>
                     <label style=${{ margin: "0 0 2px", fontSize: "0.72rem", color: "var(--mute)" }}>ধারা ২ (২০)</label>
-                    <input id=${`input_ca2_${idx}`} type="tel" inputMode="numeric" value=${rec.ca2} disabled=${isLocked || rec.absent}
+                    <input id=${`input_ca2_${idx}`} type="tel" inputMode="numeric" min="0" max="20" value=${rec.ca2} disabled=${isLocked || rec.absent}
                       placeholder="২০"
                       onInput=${e => handleScoreChange(s.sid, "ca2", e.target.value)}
                       onKeyDown=${e => handleKeyDown(e, idx, "ca2")}
@@ -483,7 +584,7 @@ export function MarksEntry({ profile }) {
 
                   <div>
                     <label style=${{ margin: "0 0 2px", fontSize: "0.72rem", color: "var(--acc)", fontWeight: 600 }}>ধারা (${toBn(contFull)})</label>
-                    <input id=${`input_continuous_${idx}`} type="tel" inputMode="numeric" value=${rec.continuous} disabled=${isLocked || rec.absent}
+                    <input id=${`input_continuous_${idx}`} type="tel" inputMode="numeric" min="0" max=${contFull} value=${rec.continuous} disabled=${isLocked || rec.absent}
                       placeholder=${toBn(contFull)}
                       onInput=${e => handleScoreChange(s.sid, "continuous", e.target.value)}
                       onKeyDown=${e => handleKeyDown(e, idx, "continuous")}
@@ -493,7 +594,7 @@ export function MarksEntry({ profile }) {
 
                   <div>
                     <label style=${{ margin: "0 0 2px", fontSize: "0.72rem", color: "var(--mute)" }}>সামষ্টিক (${toBn(termFull)})</label>
-                    <input id=${`input_terminal_${idx}`} type="tel" inputMode="numeric" value=${rec.terminal} disabled=${isLocked || rec.absent}
+                    <input id=${`input_terminal_${idx}`} type="tel" inputMode="numeric" min="0" max=${termFull} value=${rec.terminal} disabled=${isLocked || rec.absent}
                       placeholder=${toBn(termFull)}
                       onInput=${e => handleScoreChange(s.sid, "terminal", e.target.value)}
                       onKeyDown=${e => handleKeyDown(e, idx, "terminal")}
