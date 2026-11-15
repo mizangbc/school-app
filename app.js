@@ -1,5 +1,5 @@
-import { Home } from "./pages.js?v=21";
-import { PublicResultSearch } from "./results.js?v=21";
+import { Home } from "./pages.js?v=22";
+import { PublicResultSearch } from "./results.js?v=22";
 import React, { useState, useEffect } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
@@ -49,9 +49,37 @@ function Login({ onOpenPublicSearch }) {
     e.preventDefault(); setErr("");
     const m = cleanMobile(mobile);
     if (!validMobile(m)) return setErr("১১ সংখ্যার সঠিক মোবাইল নম্বর দিন (যেমন 01712345678)।");
+    if (!pw) return setErr("পাসওয়ার্ড বা পিন লিখুন।");
     setBusy(true);
-    try { await signInWithEmailAndPassword(auth, toEmail(m), pw); }
-    catch (x) { setErr(msg(x)); setBusy(false); }
+
+    // ১. এই শিক্ষকের জন্য কোনো নতুন Auth Version আছে কিনা তা জানা
+    let targetEmail = toEmail(m);
+    try {
+      const vSnap = await getDoc(doc(db, "config", "auth_versions"));
+      if (vSnap.exists() && vSnap.data()?.[m]) {
+        const v = Number(vSnap.data()[m]) || 1;
+        if (v > 1) {
+          targetEmail = `${m}_v${v}@modelgps.local`;
+        }
+      }
+    } catch (ve) {
+      console.warn("auth_versions check error:", ve);
+    }
+
+    // ২. লগইন সম্পন্ন করা
+    try {
+      await signInWithEmailAndPassword(auth, targetEmail, pw);
+    } catch (x) {
+      // যদি ভার্সনযুক্ত অ্যাকাউন্টে না মিলে, ফলব্যাক হিসেবে মূল ঠিকানায় একবার চেষ্টা করা
+      if (targetEmail !== toEmail(m) && (x.code === "auth/invalid-credential" || x.code === "auth/user-not-found")) {
+        try {
+          await signInWithEmailAndPassword(auth, toEmail(m), pw);
+          return;
+        } catch (_) {}
+      }
+      setErr(msg(x));
+      setBusy(false);
+    }
   }
   return html`<div>
     <form class="card" onSubmit=${go}>

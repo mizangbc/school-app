@@ -3,13 +3,13 @@ import htm from "https://esm.sh/htm@3.1.1";
 import { auth, db } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { Structure } from "./structure.js?v=21";
-import { Students } from "./students.js?v=21";
-import { Teachers, MyAssignments } from "./teachers.js?v=21";
-import { Exams } from "./exams.js?v=21";
-import { MarksEntry, Verification } from "./marks.js?v=21";
-import { ResultsView } from "./results.js?v=21";
-import { BackupAndPromotion } from "./backup.js?v=21";
+import { Structure } from "./structure.js?v=22";
+import { Students } from "./students.js?v=22";
+import { Teachers, MyAssignments } from "./teachers.js?v=22";
+import { Exams } from "./exams.js?v=22";
+import { MarksEntry, Verification } from "./marks.js?v=22";
+import { ResultsView } from "./results.js?v=22";
+import { BackupAndPromotion } from "./backup.js?v=22";
 
 const html = htm.bind(React.createElement);
 const toBn = n => {

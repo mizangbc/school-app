@@ -30,7 +30,7 @@ function getSecondaryAuth() {
   return secondaryAuthInstance;
 }
 
-// ১. শিক্ষক ও স্টাফ ব্যবস্থাপনা (অ্যাকাউন্ট তৈরি ও তালিকা)
+// ১. শিক্ষক ও স্টাফ ব্যবস্থাপনা (অ্যাকাউন্ট তৈরি, তালিকা ও পিন রিসেট)
 function StaffList({ onRefresh, users }) {
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");
@@ -41,6 +41,12 @@ function StaffList({ onRefresh, users }) {
   const [busy, setBusy] = useState(false);
   const [okMsg, setOkMsg] = useState("");
 
+  // পিন রিসেট সংক্রান্ত স্টেট
+  const [resetTarget, setResetTarget] = useState(null);
+  const [newPin, setNewPin] = useState("");
+  const [resetErr, setResetErr] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+
   async function handleCreate(e) {
     e.preventDefault();
     setErr("");
@@ -50,18 +56,57 @@ function StaffList({ onRefresh, users }) {
     if (!/^01\d{9}$/.test(m)) return setErr("১১ সংখ্যার সঠিক মোবাইল নম্বর দিন।");
     if (pw.length < 6) return setErr("পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।");
 
+    if (users.some(u => u.mobile === m)) {
+      return setErr("এই মোবাইল নম্বরে ইতিমধ্যে একজন শিক্ষক নিবন্ধিত আছেন। পিন পরিবর্তন করতে চাইলে নিচের 'পিন রিসেট' ব্যবহার করুন।");
+    }
+
     setBusy(true);
     try {
       const secAuth = getSecondaryAuth();
-      const cred = await createUserWithEmailAndPassword(secAuth, toEmail(m), pw);
+      let cred = null;
+      let usedVer = 1;
+
+      // বর্তমান auth version দেখা (যদি পূর্বে কোনো অ্যাকাউন্ট তৈরি/ডিলিট হয়ে থাকে)
+      let currVer = 0;
+      try {
+        const vSnap = await getDoc(doc(db, "config", "auth_versions"));
+        if (vSnap.exists() && vSnap.data()?.[m]) {
+          currVer = Number(vSnap.data()[m]) || 0;
+        }
+      } catch (ve) {}
+
+      let targetVer = currVer > 0 ? currVer + 1 : 1;
+      let email = targetVer === 1 ? toEmail(m) : `${m}_v${targetVer}@modelgps.local`;
+
+      while (!cred && targetVer <= currVer + 15) {
+        try {
+          cred = await createUserWithEmailAndPassword(secAuth, email, pw);
+          usedVer = targetVer;
+        } catch (ex) {
+          if (ex.code === "auth/email-already-in-use") {
+            targetVer++;
+            email = `${m}_v${targetVer}@modelgps.local`;
+          } else {
+            throw ex;
+          }
+        }
+      }
+
+      if (!cred) throw new Error("অ্যাকাউন্ট তৈরি করা যায়নি।");
+
       const newUid = cred.user.uid;
       await signOut(secAuth);
+
+      if (usedVer > 1 || currVer > 0) {
+        await setDoc(doc(db, "config", "auth_versions"), { [m]: usedVer }, { merge: true });
+      }
 
       // Firestore-এ প্রোফাইল সেভ
       await setDoc(doc(db, "users", newUid), {
         name: name.trim(),
         mobile: m,
         role: role,
+        authVersion: usedVer,
         createdAt: serverTimestamp()
       });
 
@@ -70,7 +115,7 @@ function StaffList({ onRefresh, users }) {
       setPw("");
       setRole("teacher");
       setShowAdd(false);
-      setOkMsg(`"${name.trim()}"-এর অ্যাকাউন্ট তৈরি হয়েছে।`);
+      setOkMsg(`✓ "${name.trim()}"-এর অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে। মোবাইল: ${toBn(m)}, পাসওয়ার্ড: ${pw}`);
       onRefresh();
     } catch (ex) {
       console.error(ex);
@@ -83,6 +128,116 @@ function StaffList({ onRefresh, users }) {
     setBusy(false);
   }
 
+  // অ্যাডমিন কর্তৃক শিক্ষকের পিন / পাসওয়ার্ড রিসেট
+  async function handleResetPin(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    setResetErr("");
+    const pin = bn2en(newPin).trim();
+    if (!pin || pin.length < 6) {
+      return setResetErr("পিন বা পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।");
+    }
+    if (!resetTarget || !resetTarget.mobile) {
+      return setResetErr("শিক্ষকের তথ্য পাওয়া যায়নি।");
+    }
+
+    setResetBusy(true);
+    const m = resetTarget.mobile;
+    const oldUid = resetTarget.id;
+
+    try {
+      // ১. বর্তমান Auth Version জানা
+      let currVer = resetTarget.authVersion || 1;
+      try {
+        const vSnap = await getDoc(doc(db, "config", "auth_versions"));
+        if (vSnap.exists() && vSnap.data()?.[m]) {
+          currVer = Math.max(currVer, Number(vSnap.data()[m]) || 1);
+        }
+      } catch (ve) {
+        console.warn("Could not read auth_versions doc:", ve);
+      }
+
+      let attemptVer = currVer + 1;
+      let cred = null;
+      const secAuth = getSecondaryAuth();
+
+      // ২. সেকেন্ডারি অথের মাধ্যমে নতুন ভার্সনে অ্যাকাউন্ট তৈরি
+      while (!cred && attemptVer <= currVer + 15) {
+        try {
+          const email = `${m}_v${attemptVer}@modelgps.local`;
+          cred = await createUserWithEmailAndPassword(secAuth, email, pin);
+        } catch (authErr) {
+          if (authErr.code === "auth/email-already-in-use") {
+            attemptVer++;
+          } else {
+            throw authErr;
+          }
+        }
+      }
+
+      if (!cred || !cred.user) {
+        throw new Error("নতুন ক্রেডেনশিয়াল তৈরি করা যায়নি।");
+      }
+
+      const newUid = cred.user.uid;
+      await signOut(secAuth);
+
+      // ৩. config/auth_versions আপডেট
+      await setDoc(doc(db, "config", "auth_versions"), {
+        [m]: attemptVer,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      // ৪. Firestore-এ নতুন UID দিয়ে প্রোফাইল সংরক্ষণ
+      await setDoc(doc(db, "users", newUid), {
+        name: resetTarget.name,
+        mobile: m,
+        role: resetTarget.role || "teacher",
+        authVersion: attemptVer,
+        pinResetAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      // ৫. পুরোনো UID ডকুমেন্ট মুছে ফেলা
+      if (oldUid && oldUid !== newUid) {
+        try {
+          await deleteDoc(doc(db, "users", oldUid));
+        } catch (delErr) {
+          console.warn("Could not delete old user doc:", delErr);
+        }
+      }
+
+      // ৬. বিষয় বরাদ্দে (assignments) teacherUid আপডেট করা
+      try {
+        const aSnap = await getDoc(doc(db, "config", "assignments"));
+        if (aSnap.exists()) {
+          const list = aSnap.data().list || [];
+          let changed = false;
+          const updatedList = list.map(a => {
+            if (a.teacherMobile === m || a.teacherUid === oldUid) {
+              changed = true;
+              return { ...a, teacherUid: newUid, teacherName: resetTarget.name };
+            }
+            return a;
+          });
+          if (changed) {
+            await setDoc(doc(db, "config", "assignments"), { list: updatedList, updatedAt: serverTimestamp() }, { merge: true });
+          }
+        }
+      } catch (aErr) {
+        console.warn("Could not update assignment teacherUid:", aErr);
+      }
+
+      setOkMsg(`✓ "${resetTarget.name}" (${toBn(m)})-এর পিন সফলভাবে রিসেট হয়েছে। নতুন পিন: "${pin}"। শিক্ষক এখন এই পিন দিয়ে লগইন করতে পারবেন।`);
+      setResetTarget(null);
+      setNewPin("");
+      onRefresh();
+    } catch (ex) {
+      console.error(ex);
+      setResetErr("পিন রিসেট করা যায়নি: " + (ex.message || ex.code || "ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।"));
+    }
+    setResetBusy(false);
+  }
+
   async function handleDelete(u) {
     if (u.role === "main_admin") {
       alert("প্রধান অ্যাডমিন অ্যাকাউন্ট মুছে ফেলা যাবে না।");
@@ -91,6 +246,7 @@ function StaffList({ onRefresh, users }) {
     if (!confirm(`"${u.name}" (${ROLES[u.role] || u.role})-কে কি মুছে ফেলতে চান?`)) return;
     try {
       await deleteDoc(doc(db, "users", u.id));
+      setOkMsg(`"${u.name}"-এর অ্যাকাউন্ট তালিকা থেকে মুছে ফেলা হয়েছে।`);
       onRefresh();
     } catch (ex) {
       console.error(ex);
@@ -99,14 +255,29 @@ function StaffList({ onRefresh, users }) {
   }
 
   return html`<div>
-    <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0" }}>
+    <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0", flexWrap: "wrap", gap: "8px" }}>
       <b>মোট শিক্ষক ও কর্মকর্তা: ${toBn(users.length)} জন</b>
-      <button class="ghost" onClick=${() => setShowAdd(!showAdd)}>
-        ${showAdd ? "বাতিল" : "+ নতুন শিক্ষক যোগ"}
+      <button class="ghost" onClick=${() => setShowAdd(!showAdd)} style=${{ width: "auto", margin: 0 }}>
+        ${showAdd ? "✕ বাতিল" : "+ নতুন শিক্ষক যোগ"}
       </button>
     </div>
 
-    ${okMsg && html`<p class="ok">${okMsg}</p>`}
+    ${okMsg && html`<div class="card" style=${{
+      background: "#f0fdf4",
+      border: "1.5px solid #22c55e",
+      color: "#15803d",
+      padding: "12px 16px",
+      borderRadius: "10px",
+      margin: "12px 0",
+      fontSize: "0.95rem",
+      fontWeight: 500,
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center"
+    }}>
+      <span>${okMsg}</span>
+      <button type="button" class="ghost" onClick=${() => setOkMsg("")} style=${{ width: "auto", margin: 0, padding: "2px 8px", fontSize: "0.8rem", color: "#15803d" }}>✕</button>
+    </div>`}
 
     ${showAdd && html`<form class="card" onSubmit=${handleCreate} style=${{ marginBottom: "16px" }}>
       <h3 style=${{ margin: "0 0 10px", fontSize: "1.05rem" }}>নতুন শিক্ষক বা কর্মকর্তার অ্যাকাউন্ট তৈরি</h3>
@@ -132,18 +303,112 @@ function StaffList({ onRefresh, users }) {
       </button>
     </form>`}
 
+    <!-- পিন রিসেট পপআপ / মডাল -->
+    ${resetTarget && html`
+      <div style=${{
+        position: "fixed",
+        top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.55)",
+        backdropFilter: "blur(2px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        padding: "16px"
+      }}>
+        <div class="card" style=${{
+          maxWidth: "420px",
+          width: "100%",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+          border: "2px solid var(--acc)",
+          borderRadius: "12px",
+          background: "#fff"
+        }}>
+          <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid var(--line)", paddingBottom: "8px" }}>
+            <h3 style=${{ margin: 0, fontSize: "1.1rem", color: "var(--acc)", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>🔑</span> শিক্ষকের পিন রিসেট
+            </h3>
+            <button type="button" class="ghost" onClick=${() => { setResetTarget(null); setNewPin(""); setResetErr(""); }}
+              style=${{ padding: "2px 8px", fontSize: "0.9rem", width: "auto", margin: 0 }}>✕</button>
+          </div>
+
+          <div style=${{ background: "var(--acc2)", padding: "10px 14px", borderRadius: "8px", marginBottom: "12px", fontSize: "0.9rem", lineHeight: "1.6" }}>
+            <div>শিক্ষক: <b>${resetTarget.name}</b></div>
+            <div>লগইন মোবাইল: <b style=${{ color: "var(--acc)" }}>${resetTarget.mobile}</b></div>
+            <div>দায়িত্ব: <b>${ROLES[resetTarget.role] || resetTarget.role}</b></div>
+          </div>
+
+          <p style=${{ fontSize: "0.85rem", color: "var(--mute)", margin: "0 0 10px", lineHeight: "1.4" }}>
+            নতুন একটি ৬-সংখ্যার পিন লিখুন অথবা নিচে ক্লিক করে সাধারণ ডিফল্ট পিন <b>123456</b> বসিয়ে দিন। রিসেটের পর শিক্ষক সরাসরি এই পিন দিয়ে লগইন করতে পারবেন।
+          </p>
+
+          <form onSubmit=${handleResetPin}>
+            <label style=${{ fontWeight: 600, display: "block", marginBottom: "6px" }}>
+              নতুন পিন / পাসওয়ার্ড (কমপক্ষে ৬ সংখ্যা বা অক্ষর)
+              <input
+                type="text"
+                value=${newPin}
+                onInput=${e => setNewPin(e.target.value)}
+                placeholder="যেমন: 123456"
+                autoFocus
+                style=${{ fontSize: "1.05rem", letterSpacing: "1.5px", fontWeight: "bold" }}
+              />
+            </label>
+
+            <div style=${{ display: "flex", gap: "8px", margin: "8px 0 14px", flexWrap: "wrap" }}>
+              <button type="button" class="ghost" onClick=${() => setNewPin("123456")}
+                style=${{ fontSize: "0.82rem", padding: "4px 10px", width: "auto", margin: 0, background: "#f0fdf4", borderColor: "#86efac", color: "#166534" }}>
+                ⚡ ডিফল্ট পিন (123456)
+              </button>
+              <button type="button" class="ghost" onClick=${() => setNewPin(Math.floor(100000 + Math.random() * 900000).toString())}
+                style=${{ fontSize: "0.82rem", padding: "4px 10px", width: "auto", margin: 0, background: "#eff6ff", borderColor: "#93c5fd", color: "#1e40af" }}>
+                🎲 র‍্যান্ডম ৬-সংখ্যার পিন
+              </button>
+            </div>
+
+            ${resetErr && html`<p class="err" style=${{ margin: "8px 0" }}>${resetErr}</p>`}
+
+            <div style=${{ display: "flex", gap: "10px", marginTop: "16px" }}>
+              <button type="submit" disabled=${resetBusy} style=${{ flex: 1, margin: 0 }}>
+                ${resetBusy ? "রিসেট হচ্ছে…" : "✓ পিন রিসেট নিশ্চিত করুন"}
+              </button>
+              <button type="button" class="ghost" disabled=${resetBusy}
+                onClick=${() => { setResetTarget(null); setNewPin(""); setResetErr(""); }}
+                style=${{ width: "auto", margin: 0 }}>
+                বাতিল
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `}
+
     <div class="grid" style=${{ marginTop: "8px" }}>
-      ${users.map(u => html`<div class="item" key=${u.id} style=${{ alignItems: "center" }}>
+      ${users.map(u => html`<div class="item" key=${u.id} style=${{ alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
         <div>
           <b>${u.name}</b>
-          <div style=${{ fontSize: "0.85rem", color: "var(--mute)" }}>
+          <div style=${{ fontSize: "0.85rem", color: "var(--mute)", marginTop: "2px" }}>
             ${u.mobile} • <span class="role" style=${{ fontSize: "0.78rem", padding: "1px 8px" }}>${ROLES[u.role] || (u.role === "main_admin" ? "প্রধান অ্যাডমিন" : u.role)}</span>
+            ${u.pinResetAt ? html`<span style=${{ fontSize: "0.75rem", color: "#15803d", marginLeft: "6px" }}>• পিন রিসেটকৃত</span>` : ""}
           </div>
         </div>
-        ${u.role !== "main_admin" && html`
-          <button type="button" class="danger" style=${{ padding: "4px 10px", fontSize: "0.85rem", width: "auto" }}
-            onClick=${() => handleDelete(u)}>বাদ দিন</button>
-        `}
+        <div style=${{ display: "flex", gap: "6px", alignItems: "center" }}>
+          ${u.role !== "main_admin" ? html`
+            <button type="button" class="ghost"
+              style=${{ padding: "4px 10px", fontSize: "0.82rem", width: "auto", margin: 0, borderColor: "var(--acc)", color: "var(--acc)", fontWeight: 600, background: "var(--acc2)" }}
+              onClick=${() => { setResetTarget(u); setNewPin(""); setResetErr(""); }}>
+              🔑 পিন রিসেট
+            </button>
+            <button type="button" class="danger" style=${{ padding: "4px 10px", fontSize: "0.82rem", width: "auto", margin: 0 }}
+              onClick=${() => handleDelete(u)}>
+              বাদ দিন
+            </button>
+          ` : html`
+            <span style=${{ fontSize: "0.78rem", color: "var(--mute)", padding: "4px 8px", background: "var(--bg)", borderRadius: "6px" }}>
+              মূল অ্যাডমিন
+            </span>
+          `}
+        </div>
       </div>`)}
     </div>
   </div>`;
