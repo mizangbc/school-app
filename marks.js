@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "https://esm.sh/react@18.3.1";
 import htm from "https://esm.sh/htm@3.1.1";
+import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { auth, db } from "./firebase.js";
 import {
   collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, defaultExamConfig
-} from "./exams.js?v=22";
+} from "./exams.js?v=23";
 
 const html = htm.bind(React.createElement);
 
@@ -25,6 +26,7 @@ const toBn = n => {
   return String(n).replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]);
 };
 const bn2en = s => String(s || "").replace(/[০-৯]/g, d => "০১২৩৪৫৬৭৮৯".indexOf(d));
+const cleanDigits = s => String(s || "").replace(/[০-৯]/g, d => "০১২৩৪৫৬৭৮৯".indexOf(d)).replace(/\D/g, "");
 
 function calculateGrade(percent, gradingScale = DESCRIPTIVE_GRADES) {
   if (percent == null || isNaN(percent)) return { grade: "-", gpa: 0 };
@@ -60,6 +62,12 @@ export function MarksEntry({ profile }) {
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const [syncStatus, setSyncStatus] = useState("synced");
+
+  // Excel / CSV ফাইল আপলোড ও টেমপ্লেট স্টেট
+  const [showExcelUpload, setShowExcelUpload] = useState(false);
+  const [uploadFileName, setUploadFileName] = useState("");
+  const [uploadPreview, setUploadPreview] = useState(null);
+  const [uploadErr, setUploadErr] = useState("");
 
   // ১. প্রাথমিক তথ্য লোড
   useEffect(() => {
@@ -458,6 +466,227 @@ export function MarksEntry({ profile }) {
     saveMarks("submitted");
   }
 
+  // ১. এই শ্রেণি ও বিষয়ের শিক্ষার্থীদের জন্য নমুনা Excel ডাউনলোড
+  function handleDownloadTemplate() {
+    if (!students || students.length === 0) {
+      alert("এই শ্রেণিতে কোনো শিক্ষার্থী পাওয়া যায়নি।");
+      return;
+    }
+    const headers = [
+      "রোল (Roll)",
+      "শিক্ষার্থীর নাম (Student Name)",
+      "ধারা ১ (সর্বোচ্চ ২০)",
+      "ধারা ২ (সর্বোচ্চ ২০)",
+      `ধারাবাহিক (সর্বোচ্চ ${contFull})`,
+      `সামষ্টিক (সর্বোচ্চ ${termFull})`,
+      "অনুপস্থিত (হ্যাঁ/না)"
+    ];
+
+    const rows = students.map(s => {
+      const rec = scores[s.sid] || {};
+      return [
+        s.roll,
+        s.name,
+        rec.ca1 || "",
+        rec.ca2 || "",
+        rec.continuous || "",
+        rec.terminal || "",
+        rec.absent ? "হ্যাঁ" : ""
+      ];
+    });
+
+    const wsData = [headers, ...rows];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    ws["!cols"] = [
+      { wch: 12 },
+      { wch: 25 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 16 }
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, "নম্বর তালিকা");
+    const safeSub = (subject || "বিষয়").replace(/[/\\?%*:|"<>]/g, "-");
+    const safeCls = (curClass?.name || "শ্রেণি").replace(/[/\\?%*:|"<>]/g, "-");
+    const safeTerm = (curTerm.name || "মূল্যায়ন").replace(/[/\\?%*:|"<>]/g, "-");
+    const fileName = `নম্বর_${safeCls}_শাখা_${section}_${safeSub}_${safeTerm}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  }
+
+  // ২. Excel বা CSV ফাইল রিড ও পার্সিং
+  function handleExcelFileChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setUploadFileName(file.name);
+    setUploadErr("");
+    setUploadPreview(null);
+
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const wb = XLSX.read(data, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
+        if (!raw || raw.length === 0) return setUploadErr("ফাইলটি খালি।");
+
+        // হেডার শনাক্তকরণ
+        let headerIdx = -1;
+        let colRoll = 0, colName = 1, colCa1 = -1, colCa2 = -1, colCont = -1, colTerm = -1, colAbsent = -1;
+
+        for (let i = 0; i < Math.min(raw.length, 6); i++) {
+          const row = (raw[i] || []).map(x => String(x || "").trim().toLowerCase());
+          const hasRoll = row.some(c => c.includes("রোল") || c.includes("roll") || c.includes("ক্রমিক") || c.includes("sl"));
+          const hasMarks = row.some(c => c.includes("ধারাবাহিক") || c.includes("সামষ্টিক") || c.includes("নম্বর") || c.includes("mark") || c.includes("ধারা"));
+          if (hasRoll || hasMarks) {
+            headerIdx = i;
+            row.forEach((col, idx) => {
+              if (col.includes("রোল") || col.includes("roll") || col.includes("ক্রমিক") || col.includes("sl")) colRoll = idx;
+              else if (col.includes("নাম") || col.includes("name")) colName = idx;
+              else if (col.includes("ধারা ১") || col.includes("ধারা-১") || col.includes("ca1") || col.includes("ca 1")) colCa1 = idx;
+              else if (col.includes("ধারা ২") || col.includes("ধারা-২") || col.includes("ca2") || col.includes("ca 2")) colCa2 = idx;
+              else if (col.includes("ধারাবাহিক") || col.includes("continuous") || col.includes("ca")) colCont = idx;
+              else if (col.includes("সামষ্টিক") || col.includes("terminal") || col.includes("sa") || col.includes("লিখিত") || col.includes("পরীক্ষা")) colTerm = idx;
+              else if (col.includes("অনুপস্থিত") || col.includes("absent")) colAbsent = idx;
+            });
+            break;
+          }
+        }
+
+        if (headerIdx === -1) {
+          headerIdx = 0;
+          colRoll = 0; colName = 1; colCa1 = 2; colCa2 = 3; colCont = 4; colTerm = 5;
+        }
+
+        const dataRows = raw.slice(headerIdx + 1);
+        const parsedRows = [];
+        const grading = examConfig?.grading || DESCRIPTIVE_GRADES;
+
+        for (let i = 0; i < dataRows.length; i++) {
+          const r = dataRows[i];
+          if (!r || r.length === 0 || r.every(c => c === "" || c == null)) continue;
+
+          const rollStr = cleanDigits(r[colRoll]);
+          const roll = parseInt(rollStr, 10);
+          const name = String(r[colName] || "").trim();
+
+          const student = students.find(s => s.roll === roll);
+          if (!student) {
+            parsedRows.push({
+              rowNum: i + (headerIdx + 2),
+              roll: roll || "",
+              name: name || "অজানা শিক্ষার্থী",
+              matched: false,
+              error: `রোল ${toBn(roll)} এই শাখার শিক্ষার্থী তালিকায় নেই।`,
+              ca1: "", ca2: "", continuous: "", terminal: "", absent: false, total: 0, pct: 0, grade: "-"
+            });
+            continue;
+          }
+
+          const absVal = colAbsent !== -1 ? String(r[colAbsent] || "").trim().toLowerCase() : "";
+          const isAbsent = absVal === "হ্যাঁ" || absVal === "yes" || absVal === "true" || absVal === "y" || absVal === "অনুপস্থিত" || absVal === "১";
+
+          let ca1 = colCa1 !== -1 ? String(r[colCa1] ?? "").trim() : "";
+          let ca2 = colCa2 !== -1 ? String(r[colCa2] ?? "").trim() : "";
+          let continuous = colCont !== -1 ? String(r[colCont] ?? "").trim() : "";
+          let terminal = colTerm !== -1 ? String(r[colTerm] ?? "").trim() : "";
+
+          let error = null;
+          let vCa1 = ca1 !== "" ? parseFloat(bn2en(ca1)) : NaN;
+          let vCa2 = ca2 !== "" ? parseFloat(bn2en(ca2)) : NaN;
+          let vCont = continuous !== "" ? parseFloat(bn2en(continuous)) : NaN;
+          let vTerm = terminal !== "" ? parseFloat(bn2en(terminal)) : NaN;
+
+          if (!isNaN(vCa1) && (vCa1 < 0 || vCa1 > 20)) error = `ধারা ১-এ সর্বোচ্চ ২০-এর মধ্যে নম্বর দিন।`;
+          if (!isNaN(vCa2) && (vCa2 < 0 || vCa2 > 20)) error = `ধারা ২-এ সর্বোচ্চ ২০-এর মধ্যে নম্বর দিন।`;
+
+          if ((!isNaN(vCa1) || !isNaN(vCa2)) && isNaN(vCont)) {
+            const sum = (isNaN(vCa1) ? 0 : vCa1) + (isNaN(vCa2) ? 0 : vCa2);
+            vCont = Math.min(contFull, Math.round((sum / 40) * contFull * 10) / 10);
+            continuous = String(vCont);
+          }
+
+          if (!isNaN(vCont) && (vCont < 0 || vCont > contFull)) {
+            error = `ধারাবাহিক মূল্যায়নে সর্বোচ্চ ${toBn(contFull)}-এর মধ্যে নম্বর দিন।`;
+          }
+          if (!isNaN(vTerm) && (vTerm < 0 || vTerm > termFull)) {
+            error = `সামষ্টিক মূল্যায়নে সর্বোচ্চ ${toBn(termFull)}-এর মধ্যে নম্বর দিন।`;
+          }
+
+          const cVal = isNaN(vCont) ? 0 : vCont;
+          const tVal = isNaN(vTerm) ? 0 : vTerm;
+          const total = Math.min(totalFull, Math.round((cVal + tVal) * 10) / 10);
+          const pct = totalFull > 0 ? Math.round((total / totalFull) * 100 * 10) / 10 : 0;
+          const { grade, gpa } = calculateGrade(pct, grading);
+
+          parsedRows.push({
+            rowNum: i + (headerIdx + 2),
+            sid: student.sid,
+            roll: student.roll,
+            name: student.name,
+            matched: true,
+            error,
+            ca1: isNaN(vCa1) ? "" : String(vCa1),
+            ca2: isNaN(vCa2) ? "" : String(vCa2),
+            continuous: isNaN(vCont) ? "" : String(vCont),
+            terminal: isNaN(vTerm) ? "" : String(vTerm),
+            absent: isAbsent,
+            total,
+            pct,
+            grade: isAbsent ? "অনুপস্থিত" : (isNaN(vCont) && isNaN(vTerm) ? "-" : grade),
+            gpa: isAbsent ? 0 : gpa
+          });
+        }
+
+        if (parsedRows.length === 0) return setUploadErr("ফাইলে কোনো নম্বর বা শিক্ষার্থীর রেকর্ড পাওয়া যায়নি।");
+        const validCount = parsedRows.filter(p => p.matched && !p.error).length;
+        setUploadPreview({
+          total: parsedRows.length,
+          valid: validCount,
+          rows: parsedRows
+        });
+      } catch (ex) {
+        console.error("Excel parse error:", ex);
+        setUploadErr("ফাইলটি পড়া যায়নি: " + (ex.message || "Excel ফরম্যাট সঠিক কিনা দেখুন।"));
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // ৩. পার্স করা নম্বর বর্তমান শিটে বসানো
+  function applyUploadedMarks() {
+    if (!uploadPreview || !uploadPreview.rows) return;
+    const newScores = { ...scores };
+    let appliedCount = 0;
+
+    uploadPreview.rows.forEach(r => {
+      if (!r.matched || r.error) return;
+      newScores[r.sid] = {
+        ca1: r.ca1,
+        ca2: r.ca2,
+        continuous: r.continuous,
+        terminal: r.terminal,
+        absent: r.absent,
+        total: r.total,
+        pct: r.pct,
+        grade: r.grade,
+        gpa: r.gpa
+      };
+      appliedCount++;
+    });
+
+    setScores(newScores);
+    setSyncStatus("dirty");
+    setShowExcelUpload(false);
+    setUploadPreview(null);
+    setUploadFileName("");
+    setNote(`✓ Excel ফাইল থেকে ${toBn(appliedCount)} জন শিক্ষার্থীর নম্বর সফলভাবে শিটে বসানো হয়েছে। নিচে "ড্রাফট সংরক্ষণ" বা "অনুমোদনের জন্য জমা দিন" বাটনে চাপুন।`);
+  }
+
   if (loading) return html`<p class="sub">নম্বর এন্ট্রি লোড হচ্ছে…</p>`;
 
   if (!isAdmin && myAssignments.length === 0) {
@@ -537,6 +766,99 @@ export function MarksEntry({ profile }) {
 
     ${isLocked && html`<div style=${{ padding: "10px 14px", background: "#fff3cd", border: "1px solid #ffeeba", borderRadius: "8px", color: "#856404", marginBottom: "14px", fontSize: "0.9rem" }}>
       * এই পরীক্ষার নম্বর ইতিমধ্যে জমা বা অনুমোদিত হয়েছে। তাই নম্বর লক করা রয়েছে।
+    </div>`}
+
+    <!-- নমুনা ডাউনলোড ও এক্সেল আপলোড বোতাম -->
+    <div style=${{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" }}>
+      <button type="button" class="ghost" onClick=${handleDownloadTemplate}
+        style=${{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.88rem", padding: "8px 14px", width: "auto", margin: 0, borderColor: "var(--acc)", color: "var(--acc)", background: "var(--acc2)", fontWeight: 600 }}>
+        📥 নমুনা Excel ডাউনলোড
+      </button>
+
+      ${!isLocked && html`
+        <button type="button" class="ghost" onClick=${() => { setShowExcelUpload(!showExcelUpload); setUploadPreview(null); setUploadErr(""); }}
+          style=${{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.88rem", padding: "8px 14px", width: "auto", margin: 0, borderColor: "#2563eb", color: "#1d4ed8", background: "#eff6ff", fontWeight: 600 }}>
+          📤 ${showExcelUpload ? "ফাইল আপলোড বন্ধ করুন" : "Excel / CSV থেকে নম্বর আপলোড"}
+        </button>
+      `}
+    </div>
+
+    <!-- Excel আপলোড প্যানেল -->
+    ${showExcelUpload && html`<div class="card" style=${{
+      background: "#f8fafc",
+      border: "1.5px solid #93c5fd",
+      borderRadius: "10px",
+      padding: "16px",
+      marginBottom: "16px",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.06)"
+    }}>
+      <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+        <b style=${{ color: "#1e40af", fontSize: "1rem" }}>
+          📤 Excel বা CSV ফাইল থেকে নম্বর আপলোড (${curClass?.name || "শ্রেণি"} - শাখা: ${section} - ${subject})
+        </b>
+        <button type="button" class="ghost" onClick=${() => { setShowExcelUpload(false); setUploadPreview(null); }}
+          style=${{ width: "auto", margin: 0, padding: "2px 8px", fontSize: "0.85rem" }}>✕</button>
+      </div>
+
+      <p style=${{ fontSize: "0.86rem", color: "var(--mute)", margin: "0 0 10px", lineHeight: "1.5" }}>
+        প্রথমে <b>"📥 নমুনা Excel ডাউনলোড"</b> বাটনে চাপ দিয়ে এই শ্রেণির শিক্ষার্থীদের রোল ও নামসহ তৈরি এক্সেল ফাইলটি নামিয়ে নিন। ফাইলে নম্বর লিখে এখানে আপলোড করলে সকল শিক্ষার্থীর নম্বর এক ক্লিকে শিটে বসে যাবে।
+      </p>
+
+      <label style=${{ fontWeight: 600, fontSize: "0.9rem", display: "block", marginBottom: "6px" }}>
+        Excel / CSV ফাইল নির্বাচন করুন (.xlsx, .xls, .csv)
+        <input type="file" accept=".xlsx, .xls, .csv" onChange=${handleExcelFileChange}
+          style=${{ marginTop: "6px", background: "#fff", padding: "8px", border: "1px dashed #93c5fd" }} />
+      </label>
+
+      ${uploadErr && html`<p class="err" style=${{ margin: "8px 0" }}>${uploadErr}</p>`}
+
+      ${uploadPreview && html`<div style=${{ marginTop: "14px" }}>
+        <div style=${{ background: "#fff", padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--line)", marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+          <div>
+            <b>ফাইল: ${uploadFileName}</b>
+            <div style=${{ fontSize: "0.85rem", color: "var(--mute)", marginTop: "2px" }}>
+              মোট রেকর্ড: ${toBn(uploadPreview.total)} টি | সঠিক নম্বর পাওয়া গেছে: <b style=${{ color: "var(--acc)" }}>${toBn(uploadPreview.valid)}</b> জন
+              ${(uploadPreview.total - uploadPreview.valid) > 0 ? html` | <span style=${{ color: "var(--err)" }}>ত্রুটি / অমিল: ${toBn(uploadPreview.total - uploadPreview.valid)} টি</span>` : ""}
+            </div>
+          </div>
+          <button type="button" disabled=${uploadPreview.valid === 0} onClick=${applyUploadedMarks}
+            style=${{ width: "auto", margin: 0, padding: "8px 16px", background: "var(--acc)", color: "#fff", fontWeight: 700, fontSize: "0.9rem" }}>
+            ✓ নম্বর শিটে যুক্ত করুন (${toBn(uploadPreview.valid)} জন)
+          </button>
+        </div>
+
+        <!-- প্রিভিউ টেবিল -->
+        <div style=${{ maxHeight: "240px", overflowY: "auto", border: "1px solid var(--line)", borderRadius: "6px", background: "#fff" }}>
+          <table style=${{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+            <thead>
+              <tr style=${{ background: "#f1f5f9", borderBottom: "1px solid var(--line)" }}>
+                <th style=${{ padding: "6px 8px" }}>রোল</th>
+                <th style=${{ padding: "6px 8px" }}>নাম</th>
+                <th style=${{ padding: "6px 8px", textAlign: "center" }}>ধারাবাহিক (${toBn(contFull)})</th>
+                <th style=${{ padding: "6px 8px", textAlign: "center" }}>সামষ্টিক (${toBn(termFull)})</th>
+                <th style=${{ padding: "6px 8px", textAlign: "center" }}>মোট (১০০)</th>
+                <th style=${{ padding: "6px 8px", textAlign: "center" }}>গ্রেড</th>
+                <th style=${{ padding: "6px 8px" }}>অবস্থা</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${uploadPreview.rows.map(r => html`<tr key=${r.rowNum} style=${{ borderBottom: "1px solid #f1f5f9", background: r.error ? "#fef2f2" : "transparent" }}>
+                <td style=${{ padding: "6px 8px", fontWeight: 600 }}>${toBn(r.roll)}</td>
+                <td style=${{ padding: "6px 8px" }}>${r.name}</td>
+                <td style=${{ padding: "6px 8px", textAlign: "center" }}>${r.absent ? "অনুপস্থিত" : toBn(r.continuous || "-")}</td>
+                <td style=${{ padding: "6px 8px", textAlign: "center" }}>${r.absent ? "অনুপস্থিত" : toBn(r.terminal || "-")}</td>
+                <td style=${{ padding: "6px 8px", textAlign: "center", fontWeight: 700 }}>${r.absent ? "-" : toBn(r.total)}</td>
+                <td style=${{ padding: "6px 8px", textAlign: "center", color: r.absent ? "var(--err)" : "var(--acc)", fontWeight: 600 }}>${r.grade}</td>
+                <td style=${{ padding: "6px 8px" }}>
+                  ${r.error
+                    ? html`<span style=${{ color: "var(--err)", fontSize: "0.78rem" }}>⚠️ ${r.error}</span>`
+                    : html`<span style=${{ color: "var(--acc)", fontSize: "0.78rem", fontWeight: 600 }}>✓ সঠিক</span>`}
+                </td>
+              </tr>`)}
+            </tbody>
+          </table>
+        </div>
+      </div>`}
     </div>`}
 
     <div class="card" style=${{ padding: "10px 8px" }}>
