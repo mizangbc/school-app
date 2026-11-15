@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, defaultExamConfig
-} from "./exams.js?v=19";
+} from "./exams.js?v=20";
 
 const html = htm.bind(React.createElement);
 

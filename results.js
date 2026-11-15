@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_ANNUAL_WEIGHTS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, LETTER_GRADES
-} from "./exams.js?v=19";
+} from "./exams.js?v=20";
 
 const html = htm.bind(React.createElement);
 
@@ -55,6 +55,7 @@ function SubjectRegisterView({ students, marksDocs, curClass, section, subject, 
 
   const contFull = term1Doc?.contFull || 30;
   const termFull = term1Doc?.termFull || 70;
+  const totalFull = contFull + termFull;
 
   // প্রতিটি শিক্ষার্থীর ২০-কলামের সারি তৈরি
   const rows = students.map(s => {
