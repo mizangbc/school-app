@@ -6,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
   DEFAULT_TERMS, DEFAULT_ANNUAL_WEIGHTS, DEFAULT_CLASS_RATIOS, DESCRIPTIVE_GRADES, LETTER_GRADES
-} from "./exams.js?v=17";
+} from "./exams.js?v=18";
 
 const html = htm.bind(React.createElement);
 
@@ -87,16 +87,19 @@ function SubjectRegisterView({ students, marksDocs, curClass, section, subject, 
       t1_ca2: r1.ca2 ?? "",
       t1_cont: r1.absent ? "অনুপস্থিত" : (r1.continuous ?? ""),
       t1_term: r1.absent ? "অনুপস্থিত" : (r1.terminal ?? ""),
+      t1_tot: r1.absent ? "অনুপস্থিত" : (r1.total != null && r1.total !== "" ? r1.total : ((parseFloat(r1.continuous) || 0) + (parseFloat(r1.terminal) || 0))),
       // ২য় প্রান্তিক
       t2_ca1: r2.ca1 ?? "",
       t2_ca2: r2.ca2 ?? "",
       t2_cont: r2.absent ? "অনুপস্থিত" : (r2.continuous ?? ""),
       t2_term: r2.absent ? "অনুপস্থিত" : (r2.terminal ?? ""),
+      t2_tot: r2.absent ? "অনুপস্থিত" : (r2.total != null && r2.total !== "" ? r2.total : ((parseFloat(r2.continuous) || 0) + (parseFloat(r2.terminal) || 0))),
       // ৩য় প্রান্তিক
       t3_ca1: r3.ca1 ?? "",
       t3_ca2: r3.ca2 ?? "",
       t3_cont: r3.absent ? "অনুপস্থিত" : (r3.continuous ?? ""),
       t3_term: r3.absent ? "অনুপস্থিত" : (r3.terminal ?? ""),
+      t3_tot: r3.absent ? "অনুপস্থিত" : (r3.total != null && r3.total !== "" ? r3.total : ((parseFloat(r3.continuous) || 0) + (parseFloat(r3.terminal) || 0))),
       // চূড়ান্ত
       annualAvg,
       subjectGrade,
@@ -104,18 +107,18 @@ function SubjectRegisterView({ students, marksDocs, curClass, section, subject, 
     };
   });
 
-  // CSV ফাইল এক্সপোর্ট (ব্যবহারকারীর হুবহু ছকে)
+  // CSV ফাইল এক্সপোর্ট (ব্যবহারকারীর হুবহু ছকে - ২০ কলাম)
   function exportCsv() {
-    const headerRow1 = `বিষয়: ${subject},,,,,,,,,,,,,,,,`;
-    const headerRow2 = `,,১ম প্রান্তিক মূল্যায়ন,,,,২য় প্রান্তিক মূল্যায়ন,,,,৩য় প্রান্তিক মূল্যায়ন,,,,চূড়ান্ত ফলাফল,,`;
-    const headerRow3 = `রোল নং,নাম,ধারা মূ-১ (২০),ধারা মূ-২ (২০),ধারাবাহিক নম্বর (${contFull}),সামষ্টিক নম্বর (${termFull}),ধারা মূ-১ (২০),ধারা মূ-২ (২০),ধারাবাহিক নম্বর (${contFull}),সামষ্টিক নম্বর (${termFull}),ধারা মূ-১ (২০),ধারা মূ-২ (২০),ধারাবাহিক নম্বর (${contFull}),সামষ্টিক নম্বর (${termFull}),প্রান্তিকের গড় নম্বর,বিষয় গ্রেড,সমন্বিত গ্রেড`;
+    const headerRow1 = `বিষয়: ${subject},,,,,,,,,,,,,,,,,,,`;
+    const headerRow2 = `,,১ম প্রান্তিক মূল্যায়ন,,,,,২য় প্রান্তিক মূল্যায়ন,,,,,৩য় প্রান্তিক মূল্যায়ন,,,,,চূড়ান্ত ফলাফল,,`;
+    const headerRow3 = `রোল নং,নাম,ধারা মূ-১ (২০),ধারা মূ-২ (২০),ধারাবাহিক নম্বর (${contFull}),সামষ্টিক নম্বর (${termFull}),মোট (${totalFull}),ধারা মূ-১ (২০),ধারা মূ-২ (২০),ধারাবাহিক নম্বর (${contFull}),সামষ্টিক নম্বর (${termFull}),মোট (${totalFull}),ধারা মূ-১ (২০),ধারা মূ-২ (২০),ধারাবাহিক নম্বর (${contFull}),সামষ্টিক নম্বর (${termFull}),মোট (${totalFull}),প্রান্তিকের গড় নম্বর,বিষয় গ্রেড,সমন্বিত গ্রেড`;
 
     const dataRows = rows.map(r => [
       r.roll,
       `"${r.name}"`,
-      r.t1_ca1, r.t1_ca2, r.t1_cont, r.t1_term,
-      r.t2_ca1, r.t2_ca2, r.t2_cont, r.t2_term,
-      r.t3_ca1, r.t3_ca2, r.t3_cont, r.t3_term,
+      r.t1_ca1, r.t1_ca2, r.t1_cont, r.t1_term, r.t1_tot,
+      r.t2_ca1, r.t2_ca2, r.t2_cont, r.t2_term, r.t2_tot,
+      r.t3_ca1, r.t3_ca2, r.t3_cont, r.t3_term, r.t3_tot,
       r.annualAvg,
       `"${r.subjectGrade}"`,
       `"${r.overallGrade}"`
@@ -169,9 +172,9 @@ function SubjectRegisterView({ students, marksDocs, curClass, section, subject, 
         <thead>
           <tr style=${{ background: "var(--bg)", borderBottom: "1px solid var(--line)", textAlign: "center" }}>
             <th colSpan="2" style=${{ border: "1px solid var(--line)", padding: "6px" }}>শিক্ষার্থী</th>
-            <th colSpan="4" style=${{ border: "1px solid var(--line)", padding: "6px", background: "#e8f5e9", color: "#1f7a5a" }}>১ম প্রান্তিক মূল্যায়ন</th>
-            <th colSpan="4" style=${{ border: "1px solid var(--line)", padding: "6px", background: "#e3f2fd", color: "#1565c0" }}>২য় প্রান্তিক মূল্যায়ন</th>
-            <th colSpan="4" style=${{ border: "1px solid var(--line)", padding: "6px", background: "#fff3e0", color: "#e65100" }}>৩য় প্রান্তিক মূল্যায়ন</th>
+            <th colSpan="5" style=${{ border: "1px solid var(--line)", padding: "6px", background: "#e8f5e9", color: "#1f7a5a" }}>১ম প্রান্তিক মূল্যায়ন</th>
+            <th colSpan="5" style=${{ border: "1px solid var(--line)", padding: "6px", background: "#e3f2fd", color: "#1565c0" }}>২য় প্রান্তিক মূল্যায়ন</th>
+            <th colSpan="5" style=${{ border: "1px solid var(--line)", padding: "6px", background: "#fff3e0", color: "#e65100" }}>৩য় প্রান্তিক মূল্যায়ন</th>
             <th colSpan="3" style=${{ border: "1px solid var(--line)", padding: "6px", background: "#f3e5f5", color: "#6a1b9a" }}>চূড়ান্ত ফলাফল</th>
           </tr>
           <tr style=${{ background: "#fafafa", borderBottom: "2px solid var(--line)", textAlign: "center", fontSize: "0.78rem" }}>
@@ -182,16 +185,19 @@ function SubjectRegisterView({ students, marksDocs, curClass, section, subject, 
             <th style=${{ border: "1px solid var(--line)", padding: "4px" }}>ধারা ২ (২০)</th>
             <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700 }}>ধারাবাহিক (${toBn(contFull)})</th>
             <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700 }}>সামষ্টিক (${toBn(termFull)})</th>
+            <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 800, background: "#e8f5e9" }}>মোট (${toBn(totalFull)})</th>
 
             <th style=${{ border: "1px solid var(--line)", padding: "4px" }}>ধারা ১ (২০)</th>
             <th style=${{ border: "1px solid var(--line)", padding: "4px" }}>ধারা ২ (২০)</th>
             <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700 }}>ধারাবাহিক (${toBn(contFull)})</th>
             <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700 }}>সামষ্টিক (${toBn(termFull)})</th>
+            <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 800, background: "#e3f2fd" }}>মোট (${toBn(totalFull)})</th>
 
             <th style=${{ border: "1px solid var(--line)", padding: "4px" }}>ধারা ১ (২০)</th>
             <th style=${{ border: "1px solid var(--line)", padding: "4px" }}>ধারা ২ (২০)</th>
             <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700 }}>ধারাবাহিক (${toBn(contFull)})</th>
             <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700 }}>সামষ্টিক (${toBn(termFull)})</th>
+            <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 800, background: "#fff3e0" }}>মোট (${toBn(totalFull)})</th>
 
             <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#f3e5f5" }}>প্রান্তিকের গড়</th>
             <th style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#f3e5f5" }}>বিষয় গ্রেড</th>
@@ -207,16 +213,19 @@ function SubjectRegisterView({ students, marksDocs, curClass, section, subject, 
             <td style=${{ border: "1px solid var(--line)", padding: "4px" }}>${toBn(r.t1_ca2)}</td>
             <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#f9fcf9" }}>${toBn(r.t1_cont)}</td>
             <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#f9fcf9" }}>${toBn(r.t1_term)}</td>
+            <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 800, background: "#e8f5e9" }}>${toBn(r.t1_tot)}</td>
 
             <td style=${{ border: "1px solid var(--line)", padding: "4px" }}>${toBn(r.t2_ca1)}</td>
             <td style=${{ border: "1px solid var(--line)", padding: "4px" }}>${toBn(r.t2_ca2)}</td>
             <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#f9fbfd" }}>${toBn(r.t2_cont)}</td>
             <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#f9fbfd" }}>${toBn(r.t2_term)}</td>
+            <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 800, background: "#e3f2fd" }}>${toBn(r.t2_tot)}</td>
 
             <td style=${{ border: "1px solid var(--line)", padding: "4px" }}>${toBn(r.t3_ca1)}</td>
             <td style=${{ border: "1px solid var(--line)", padding: "4px" }}>${toBn(r.t3_ca2)}</td>
             <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#fdfbf9" }}>${toBn(r.t3_cont)}</td>
             <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#fdfbf9" }}>${toBn(r.t3_term)}</td>
+            <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 800, background: "#fff3e0" }}>${toBn(r.t3_tot)}</td>
 
             <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#faf5fb" }}>${toBn(r.annualAvg)}</td>
             <td style=${{ border: "1px solid var(--line)", padding: "4px", fontWeight: 700, background: "#faf5fb" }}>${r.subjectGrade}</td>
